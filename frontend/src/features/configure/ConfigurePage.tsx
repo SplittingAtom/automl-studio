@@ -12,6 +12,7 @@ import type { Task } from '../../api/schemas'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { WarningBanner } from '../../components/WarningBanner'
 import { AnalysisPanel } from './AnalysisPanel'
+import { CalculatedColumnCard } from './CalculatedColumnCard'
 import { PreviewTable } from './PreviewTable'
 import { TargetPicker } from './TargetPicker'
 
@@ -169,6 +170,8 @@ export function ConfigurePage() {
           )}
         </div>
       </div>
+
+      <CalculatedColumnCard datasetId={meta.id} columns={meta.columns} />
 
       <div className="card" style={{ marginTop: '1.25rem' }}>
         <h2>Data preview</h2>

@@ -78,6 +78,16 @@ export const api = {
   analyzeDataset: (id: string): Promise<DatasetAnalysis> =>
     request(DatasetAnalysisSchema, `/api/datasets/${id}/analysis`),
 
+  createCalculatedColumn: (
+    datasetId: string,
+    input: { name: string; formula: string },
+  ): Promise<DatasetMeta> =>
+    request(DatasetMetaSchema, `/api/datasets/${datasetId}/calculated`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+
   uploadDataset: (file: File): Promise<DatasetMeta> => {
     const form = new FormData()
     form.append('file', file)

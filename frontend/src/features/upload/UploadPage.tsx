@@ -17,7 +17,7 @@ export function UploadPage() {
   }
 
   const samples = (datasets.data ?? []).filter((d) => d.source === 'sample')
-  const uploads = (datasets.data ?? []).filter((d) => d.source === 'upload')
+  const uploads = (datasets.data ?? []).filter((d) => d.source !== 'sample')
 
   return (
     <div>
@@ -40,7 +40,7 @@ export function UploadPage() {
 
       {uploads.length > 0 && (
         <>
-          <h2 style={{ marginTop: '2rem' }}>Your uploads</h2>
+          <h2 style={{ marginTop: '2rem' }}>Your datasets</h2>
           <div className="sample-grid">
             {uploads.map((dataset) => (
               <button

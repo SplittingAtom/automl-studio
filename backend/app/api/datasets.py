@@ -9,9 +9,10 @@ from app.analysis.analyzer import analyze_dataset
 from app.api.deps import get_dataset_repo, get_settings
 from app.api.envelope import AppError, ok
 from app.config import Settings
+from app.datasets.calculated import add_calculated_column
 from app.datasets.csv_loading import parse_upload
 from app.datasets.repository import DatasetRepository
-from app.datasets.schemas import DatasetMeta, DatasetPreview
+from app.datasets.schemas import CalculatedColumnRequest, DatasetMeta, DatasetPreview
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -60,6 +61,20 @@ def preview_dataset(
         rows=tuple(cleaned.to_dict(orient="records")),
     )
     return ok(preview.model_dump())
+
+
+@router.post("/{dataset_id}/calculated")
+def create_calculated_column(
+    dataset_id: str, request: CalculatedColumnRequest, repo: RepoDep
+) -> dict:
+    """Add a formula column by materializing a new derived dataset."""
+    meta = _require(repo, dataset_id)
+    df = repo.load_dataframe(dataset_id)
+    extended = add_calculated_column(df, request.name, request.formula)
+    derived = repo.save(
+        extended, name=f"{meta.name} (+{request.name.strip()})", source="derived"
+    )
+    return ok(derived.model_dump())
 
 
 @router.get("/{dataset_id}/analysis")

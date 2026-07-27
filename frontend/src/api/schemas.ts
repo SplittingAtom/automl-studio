@@ -42,7 +42,7 @@ export const WarningSchema = z.object({
 export const DatasetMetaSchema = z.object({
   id: z.string(),
   name: z.string(),
-  source: z.enum(['upload', 'sample']),
+  source: z.enum(['upload', 'sample', 'derived']),
   created_at: z.string(),
   row_count: z.number(),
   column_count: z.number(),

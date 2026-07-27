@@ -397,6 +397,41 @@ h3 { font-size: 0.95rem; }
 
 .context-line { margin: 0.25rem 0 1rem; }
 
+/* Calculated column form */
+.calc-form {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.calc-form input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.9rem;
+  font-family: 'SF Mono', ui-monospace, monospace;
+}
+.calc-name { width: 200px; }
+.calc-formula { flex: 1; min-width: 260px; }
+.calc-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.chip-clickable {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-family: inherit;
+}
+.chip-clickable:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
 /* Retrain suggestions */
 .suggestions-card {
   border-left: 4px solid var(--primary);

@@ -45,10 +45,15 @@ class ProfileResult(Frozen):
     warnings: tuple[ProfileWarning, ...]
 
 
+class CalculatedColumnRequest(Frozen):
+    name: str
+    formula: str
+
+
 class DatasetMeta(Frozen):
     id: str
     name: str
-    source: Literal["upload", "sample"]
+    source: Literal["upload", "sample", "derived"]
     created_at: str
     row_count: int
     column_count: int

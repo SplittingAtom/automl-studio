@@ -42,6 +42,15 @@ export function useUploadDataset() {
   })
 }
 
+export function useCreateCalculatedColumn(datasetId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { name: string; formula: string }) =>
+      api.createCalculatedColumn(datasetId, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['datasets'] }),
+  })
+}
+
 export function useCreateModel() {
   return useMutation({
     mutationFn: (input: {
