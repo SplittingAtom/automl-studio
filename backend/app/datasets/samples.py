@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 SAMPLE_DATASETS = (
     {"id": "ds_sample_titanic", "filename": "titanic.csv", "name": "Titanic Passengers"},
     {"id": "ds_sample_housing", "filename": "california_housing.csv", "name": "California Housing"},
+    {"id": "ds_sample_churn", "filename": "telco_churn.csv", "name": "Telco Customer Churn"},
+    {"id": "ds_sample_penguins", "filename": "penguins.csv", "name": "Palmer Penguins"},
+    {"id": "ds_sample_bikes", "filename": "bike_rentals.csv", "name": "Bike Rental Demand"},
+    {"id": "ds_sample_diamonds", "filename": "diamonds.csv", "name": "Diamond Prices"},
+    {"id": "ds_sample_income", "filename": "census_income.csv", "name": "Census Income"},
+    {"id": "ds_sample_heart", "filename": "heart_disease.csv", "name": "Heart Disease"},
 )
 
 

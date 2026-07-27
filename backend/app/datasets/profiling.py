@@ -65,11 +65,18 @@ def _classify(series: pd.Series, nonnull: pd.Series, unique: int) -> ColumnKind:
     return _classify_text(nonnull, unique)
 
 
+ID_LIKE_DENSITY = 0.8
+
+
 def _classify_numeric(series: pd.Series, nonnull: pd.Series, unique: int) -> ColumnKind:
     if unique <= LOW_CARDINALITY_MAX:
         return "categorical"
     if is_integer_dtype(series) and unique / len(nonnull) > ID_LIKE_INT_RATIO:
-        return "id_like"
+        # IDs are dense integer sequences (1, 2, 3…); mostly-unique measurements
+        # like daily counts span a much wider range than their value count.
+        span = float(nonnull.max()) - float(nonnull.min()) + 1
+        if span > 0 and unique / span >= ID_LIKE_DENSITY:
+            return "id_like"
     return "numeric"
 
 

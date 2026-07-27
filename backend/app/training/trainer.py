@@ -99,10 +99,11 @@ def train_model(
         if is_classification
         else _regression_metrics(model, X_test, y_test)
     )
-    _check_leakage(metrics, warnings)
+    importance = _importance(model, X.columns)
+    _check_leakage(metrics, importance, warnings)
     return TrainingResult(
         metrics=metrics,
-        importance=_importance(model, X.columns),
+        importance=importance,
         warnings=tuple(warnings),
         n_rows_used=len(data),
         best_iteration=best_iteration,
@@ -210,18 +211,36 @@ def _regression_metrics(model, X_test, y_test) -> dict[str, Any]:
     }
 
 
-def _check_leakage(metrics: dict[str, Any], warnings: list[ProfileWarning]) -> None:
+LEAKAGE_IMPORTANCE_SHARE = 0.9
+
+
+def _check_leakage(
+    metrics: dict[str, Any],
+    importance: tuple[ImportanceItem, ...],
+    warnings: list[ProfileWarning],
+) -> None:
+    """A perfect score alone isn't leakage — some datasets are genuinely easy.
+
+    The leakage signature is a perfect score AND one column doing nearly all
+    the work (a look-alike of the target).
+    """
     score = metrics.get("accuracy") or metrics.get("r2")
-    if score is not None and score > LEAKAGE_SCORE_THRESHOLD:
-        warnings.append(
-            ProfileWarning(
-                code="POSSIBLE_LEAKAGE",
-                message=(
-                    "The model is suspiciously perfect — one of the columns may already "
-                    "contain the answer. Consider removing look-alike columns and retraining."
-                ),
-            )
+    if score is None or score <= LEAKAGE_SCORE_THRESHOLD or not importance:
+        return
+    top = importance[0]
+    if top.score < LEAKAGE_IMPORTANCE_SHARE:
+        return
+    warnings.append(
+        ProfileWarning(
+            code="POSSIBLE_LEAKAGE",
+            column=top.feature,
+            message=(
+                f'The model is suspiciously perfect, and "{top.feature}" is doing almost '
+                "all the work — it may already contain the answer. Consider leaving it "
+                "out and retraining."
+            ),
         )
+    )
 
 
 def _importance(model, feature_names) -> tuple[ImportanceItem, ...]:

@@ -98,7 +98,22 @@ class TestGuardrails:
         df = pd.DataFrame({"leak": y, "noise": rng.uniform(0, 1, 400), "target": y})
         spec = build_feature_spec(df, "target", "classification")
         result = train_model(df, spec)
-        assert any(w.code == "POSSIBLE_LEAKAGE" for w in result.warnings)
+        warning = next(w for w in result.warnings if w.code == "POSSIBLE_LEAKAGE")
+        assert warning.column == "leak"
+
+    def test_no_leakage_warning_when_dataset_is_genuinely_easy(self):
+        # Perfectly separable from several features together — not leakage
+        rng = np.random.default_rng(2)
+        rows = 400
+        a = rng.uniform(0, 10, rows)
+        b = rng.uniform(0, 10, rows)
+        df = pd.DataFrame({"a": a, "b": b, "target": np.where(a + b > 10, "hi", "lo")})
+        spec = build_feature_spec(df, "target", "classification")
+        result = train_model(df, spec)
+        top_share = result.importance[0].score
+        if result.metrics["accuracy"] > 0.999:
+            assert top_share < 0.9  # importance is shared, so no warning fires
+        assert not any(w.code == "POSSIBLE_LEAKAGE" for w in result.warnings)
 
     def test_row_cap_sampling(self):
         df = _classification_df(2000)

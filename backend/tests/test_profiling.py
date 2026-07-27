@@ -25,6 +25,13 @@ class TestColumnKinds:
         assert _col(result, "passenger_id").kind == "id_like"
         assert "ID_LIKE_COLUMN" in _codes(result)
 
+    def test_sparse_unique_integers_are_numeric_not_id(self):
+        # Daily counts: mostly unique but spread over a wide range — not IDs
+        rng = np.random.default_rng(42)
+        counts = rng.integers(20, 9000, 200)
+        df = pd.DataFrame({"rentals": counts})
+        assert _col(profile_dataframe(df), "rentals").kind == "numeric"
+
     def test_low_cardinality_integers_are_categorical(self):
         df = pd.DataFrame({"pclass": [1, 2, 3] * 50})
         assert _col(profile_dataframe(df), "pclass").kind == "categorical"
