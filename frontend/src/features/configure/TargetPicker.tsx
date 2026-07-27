@@ -8,12 +8,14 @@ export function TargetPicker({
   columns,
   selected,
   excluded,
+  recommended,
   onSelect,
   onToggleUse,
 }: {
   columns: ColumnProfile[]
   selected: string | null
   excluded: Set<string>
+  recommended: Set<string>
   onSelect: (name: string) => void
   onToggleUse: (name: string) => void
 }) {
@@ -61,6 +63,11 @@ export function TargetPicker({
                 </td>
                 <td>
                   <strong>{column.name}</strong>
+                  {recommended.has(column.name) && (
+                    <span title="Recommended prediction target" style={{ marginLeft: 4 }}>
+                      ★
+                    </span>
+                  )}
                 </td>
                 <td>
                   <span className={`chip chip-${usable ? column.kind : 'excluded'}`}>

@@ -25,6 +25,15 @@ export function useDatasetPreview(id: string) {
   })
 }
 
+/** Server computes once and caches to disk; may take a few seconds first time. */
+export function useDatasetAnalysis(id: string) {
+  return useQuery({
+    queryKey: ['datasets', id, 'analysis'],
+    queryFn: () => api.analyzeDataset(id),
+    staleTime: Infinity,
+  })
+}
+
 export function useUploadDataset() {
   const queryClient = useQueryClient()
   return useMutation({

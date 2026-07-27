@@ -1,10 +1,17 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import { useCreateModel, useDataset, useDatasetPreview, useModels } from '../../api/hooks'
+import {
+  useCreateModel,
+  useDataset,
+  useDatasetAnalysis,
+  useDatasetPreview,
+  useModels,
+} from '../../api/hooks'
 import type { Task } from '../../api/schemas'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { WarningBanner } from '../../components/WarningBanner'
+import { AnalysisPanel } from './AnalysisPanel'
 import { PreviewTable } from './PreviewTable'
 import { TargetPicker } from './TargetPicker'
 
@@ -21,6 +28,7 @@ export function ConfigurePage() {
   const createModel = useCreateModel()
 
   const models = useModels(id)
+  const analysis = useDatasetAnalysis(id)
 
   const [target, setTarget] = useState<string | null>(null)
   const [taskOverride, setTaskOverride] = useState<Task | null>(null)
@@ -34,6 +42,11 @@ export function ConfigurePage() {
   const detectedTask = targetColumn ? detectTask(targetColumn.kind) : null
   const task = taskOverride ?? detectedTask
   const previousModels = (models.data ?? []).length
+  const recommended = new Set(
+    (analysis.data?.candidates ?? []).filter((c) => c.recommended).map((c) => c.column),
+  )
+  const targetCandidate =
+    (analysis.data?.candidates ?? []).find((c) => c.column === target) ?? null
 
   const toggleUse = (name: string) => {
     setExcluded((current) => {
@@ -77,13 +90,25 @@ export function ConfigurePage() {
       </div>
       <WarningBanner warnings={meta.warnings} />
 
-      <div className="configure-grid">
+      <AnalysisPanel
+        analysis={analysis.data}
+        loading={analysis.isLoading}
+        error={analysis.error}
+        selectedTarget={target}
+        onPickTarget={(candidate) => {
+          setTarget(candidate.column)
+          setTaskOverride(null)
+        }}
+      />
+
+      <div className="configure-grid" style={{ marginTop: '1.25rem' }}>
         <div className="card">
           <h2>Pick a column to predict</h2>
           <TargetPicker
             columns={meta.columns}
             selected={target}
             excluded={excluded}
+            recommended={recommended}
             onSelect={(name) => {
               setTarget(name)
               setTaskOverride(null)
@@ -118,6 +143,12 @@ export function ConfigurePage() {
               {taskOverride === null && (
                 <p className="muted small">
                   Detected automatically — override it if that looks wrong.
+                </p>
+              )}
+              {targetCandidate && targetCandidate.top_predictors.length > 0 && (
+                <p className="muted small">
+                  Strongest predictors:{' '}
+                  {targetCandidate.top_predictors.slice(0, 3).map((p) => p.name).join(', ')}
                 </p>
               )}
               {excluded.size > 0 && (

@@ -5,6 +5,7 @@ from typing import Annotated
 import pandas as pd
 from fastapi import APIRouter, Depends, Query, UploadFile
 
+from app.analysis.analyzer import analyze_dataset
 from app.api.deps import get_dataset_repo, get_settings
 from app.api.envelope import AppError, ok
 from app.config import Settings
@@ -59,6 +60,18 @@ def preview_dataset(
         rows=tuple(cleaned.to_dict(orient="records")),
     )
     return ok(preview.model_dump())
+
+
+@router.get("/{dataset_id}/analysis")
+def analyze(dataset_id: str, repo: RepoDep) -> dict:
+    """Suitability analysis: cached to disk since datasets are immutable."""
+    meta = _require(repo, dataset_id)
+    cached = repo.get_analysis(dataset_id)
+    if cached is not None:
+        return ok(cached.model_dump())
+    analysis = analyze_dataset(dataset_id, repo.load_dataframe(dataset_id), meta.columns)
+    repo.save_analysis(dataset_id, analysis)
+    return ok(analysis.model_dump())
 
 
 def _require(repo: DatasetRepository, dataset_id: str) -> DatasetMeta:

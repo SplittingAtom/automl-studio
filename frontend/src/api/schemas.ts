@@ -110,6 +110,29 @@ export const SensitivityResponseSchema = z.object({
   ),
 })
 
+export const TargetCandidateSchema = z.object({
+  column: z.string(),
+  task: z.enum(['classification', 'regression']),
+  score: z.number(),
+  recommended: z.boolean(),
+  derived_like: z.boolean(),
+  signal: z.number(),
+  probe_score: z.number().nullable(),
+  baseline_score: z.number().nullable(),
+  reasons: z.array(z.string()),
+  top_predictors: z.array(z.object({ name: z.string(), share: z.number() })),
+})
+
+export const DatasetAnalysisSchema = z.object({
+  dataset_id: z.string(),
+  rating: z.enum(['great', 'good', 'fair', 'poor']),
+  summary: z.string(),
+  points: z.array(
+    z.object({ tone: z.enum(['good', 'warn', 'bad']), message: z.string() }),
+  ),
+  candidates: z.array(TargetCandidateSchema),
+})
+
 export type ColumnKind = z.infer<typeof ColumnKindSchema>
 export type ColumnProfile = z.infer<typeof ColumnProfileSchema>
 export type ApiWarning = z.infer<typeof WarningSchema>
@@ -121,5 +144,7 @@ export type InputSpecItem = z.infer<typeof InputSpecItemSchema>
 export type ModelMeta = z.infer<typeof ModelMetaSchema>
 export type PredictResponse = z.infer<typeof PredictResponseSchema>
 export type Explanation = z.infer<typeof ExplanationSchema>
+export type TargetCandidate = z.infer<typeof TargetCandidateSchema>
+export type DatasetAnalysis = z.infer<typeof DatasetAnalysisSchema>
 export type SensitivityResponse = z.infer<typeof SensitivityResponseSchema>
 export type WhatIfValues = Record<string, number | string>

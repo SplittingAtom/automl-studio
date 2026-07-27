@@ -7,11 +7,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.analysis.schemas import DatasetAnalysis
 from app.datasets.profiling import profile_dataframe
 from app.datasets.schemas import DatasetMeta
 
 META_FILE = "meta.json"
 DATA_FILE = "data.csv"
+ANALYSIS_FILE = "analysis.json"
 
 
 class DatasetRepository:
@@ -63,3 +65,14 @@ class DatasetRepository:
 
     def load_dataframe(self, dataset_id: str) -> pd.DataFrame:
         return pd.read_csv(self._root / dataset_id / DATA_FILE)
+
+    def get_analysis(self, dataset_id: str) -> "DatasetAnalysis | None":
+        path = self._root / dataset_id / ANALYSIS_FILE
+        if not path.is_file():
+            return None
+        return DatasetAnalysis.model_validate(json.loads(path.read_text()))
+
+    def save_analysis(self, dataset_id: str, analysis: "DatasetAnalysis") -> None:
+        (self._root / dataset_id / ANALYSIS_FILE).write_text(
+            analysis.model_dump_json(indent=2)
+        )

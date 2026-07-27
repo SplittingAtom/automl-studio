@@ -1,12 +1,14 @@
 import type { z } from 'zod'
 
 import {
+  DatasetAnalysisSchema,
   DatasetMetaSchema,
   DatasetPreviewSchema,
   EnvelopeSchema,
   ModelMetaSchema,
   PredictResponseSchema,
   SensitivityResponseSchema,
+  type DatasetAnalysis,
   type DatasetMeta,
   type DatasetPreview,
   type ModelMeta,
@@ -72,6 +74,9 @@ export const api = {
 
   previewDataset: (id: string, rows = 15): Promise<DatasetPreview> =>
     request(DatasetPreviewSchema, `/api/datasets/${id}/preview?rows=${rows}`),
+
+  analyzeDataset: (id: string): Promise<DatasetAnalysis> =>
+    request(DatasetAnalysisSchema, `/api/datasets/${id}/analysis`),
 
   uploadDataset: (file: File): Promise<DatasetMeta> => {
     const form = new FormData()

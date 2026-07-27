@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { PredictResponseSchema, SensitivityResponseSchema } from '../api/schemas'
+import {
+  DatasetAnalysisSchema,
+  PredictResponseSchema,
+  SensitivityResponseSchema,
+} from '../api/schemas'
 
 describe('PredictResponseSchema', () => {
   it('parses a classification response with explanation', () => {
@@ -31,6 +35,36 @@ describe('PredictResponseSchema', () => {
       elapsed_ms: 1.0,
     })
     expect(parsed.prediction).toBe(231400.5)
+  })
+})
+
+describe('DatasetAnalysisSchema', () => {
+  it('parses a full analysis payload', () => {
+    const parsed = DatasetAnalysisSchema.parse({
+      dataset_id: 'ds_1',
+      rating: 'good',
+      summary: 'Good fit for modeling — "survived" is a strong target.',
+      points: [
+        { tone: 'good', message: '891 rows — plenty to learn from.' },
+        { tone: 'warn', message: 'Heavy missing values in: deck.' },
+      ],
+      candidates: [
+        {
+          column: 'survived',
+          task: 'classification',
+          score: 78,
+          recommended: true,
+          derived_like: false,
+          signal: 0.45,
+          probe_score: 0.79,
+          baseline_score: 0.62,
+          reasons: ['The other columns predict it well.'],
+          top_predictors: [{ name: 'sex', share: 0.6 }],
+        },
+      ],
+    })
+    expect(parsed.candidates[0].recommended).toBe(true)
+    expect(parsed.rating).toBe('good')
   })
 })
 
