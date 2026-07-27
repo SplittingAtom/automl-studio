@@ -397,6 +397,22 @@ h3 { font-size: 0.95rem; }
 
 .context-line { margin: 0.25rem 0 1rem; }
 
+/* Retrain suggestions */
+.suggestions-card {
+  border-left: 4px solid var(--primary);
+  margin-bottom: 1.25rem;
+}
+.suggestion-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+.suggestion-row + .suggestion-row { border-top: 1px solid var(--border); }
+.suggestion-row .btn { flex-shrink: 0; }
+
 .range-note {
   background: var(--warning-bg);
   border: 1px solid var(--warning-border);

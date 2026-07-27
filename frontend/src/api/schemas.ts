@@ -81,6 +81,8 @@ export const ModelMetaSchema = z.object({
   input_spec: z.array(InputSpecItemSchema).nullable(),
   excluded_columns: z.array(z.object({ name: z.string(), reason: z.string() })),
   user_excluded_columns: z.array(z.string()),
+  suggested_exclusions: z.array(z.string()),
+  leak_suspect: z.string().nullable(),
   warnings: z.array(WarningSchema),
   n_rows_used: z.number().nullable(),
 })

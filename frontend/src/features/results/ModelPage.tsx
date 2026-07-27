@@ -5,6 +5,7 @@ import { ErrorBanner } from '../../components/ErrorBanner'
 import { WarningBanner } from '../../components/WarningBanner'
 import { taskLabel } from '../../lib/formatters'
 import { ResultsDashboard } from './ResultsDashboard'
+import { RetrainSuggestions } from './RetrainSuggestions'
 import { TrainingProgress } from './TrainingProgress'
 
 export function ModelPage() {
@@ -53,6 +54,7 @@ export function ModelPage() {
         </div>
       </div>
       <WarningBanner warnings={meta.warnings} />
+      <RetrainSuggestions meta={meta} />
       <ResultsDashboard meta={meta} />
     </div>
   )

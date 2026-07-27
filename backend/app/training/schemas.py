@@ -55,5 +55,7 @@ class ModelMeta(Frozen):
     input_spec: tuple[InputSpecItem, ...] | None = None
     excluded_columns: tuple[ExcludedColumn, ...] = ()
     user_excluded_columns: tuple[str, ...] = ()
+    suggested_exclusions: tuple[str, ...] = ()
+    leak_suspect: str | None = None
     warnings: tuple[ProfileWarning, ...] = ()
     n_rows_used: int | None = None

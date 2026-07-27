@@ -11,7 +11,10 @@ from app.training.preprocessing import FeatureSpec, TrainingError, build_feature
 from app.training.repository import ModelRepository
 from app.training.schemas import InputSpecItem, ModelMeta, TrainRequest
 from app.training.task_detection import detect_task
-from app.training.trainer import train_model
+from app.training.trainer import ImportanceItem, train_model
+
+LOW_IMPORTANCE_SHARE = 0.01
+MIN_REMAINING_COLUMNS = 2
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +110,8 @@ def run_training_job(
                     "importance": result.importance,
                     "input_spec": build_input_spec(spec),
                     "excluded_columns": spec.excluded,
+                    "suggested_exclusions": suggest_exclusions(spec, result.importance),
+                    "leak_suspect": _leak_suspect(spec, result.warnings),
                     "warnings": result.warnings,
                     "n_rows_used": result.n_rows_used,
                 }
@@ -125,6 +130,40 @@ def run_training_job(
                 }
             )
         )
+
+
+def suggest_exclusions(
+    spec: FeatureSpec, importance: tuple[ImportanceItem, ...]
+) -> tuple[str, ...]:
+    """Dataset columns whose features all scored below the importance floor.
+
+    Derived date features are grouped by their source column — the raw column
+    is only suggested when every part of it was useless.
+    """
+    scores = {item.feature: item.score for item in importance}
+    by_source: dict[str, list[float]] = {}
+    for feature in spec.features:
+        source = feature.derived_from or feature.name
+        by_source.setdefault(source, []).append(scores.get(feature.name, 0.0))
+    suggested = tuple(
+        source
+        for source, values in by_source.items()
+        if max(values) < LOW_IMPORTANCE_SHARE
+    )
+    if len(by_source) - len(suggested) < MIN_REMAINING_COLUMNS:
+        return ()
+    return suggested
+
+
+def _leak_suspect(spec: FeatureSpec, warnings) -> str | None:
+    """Map a POSSIBLE_LEAKAGE warning's feature back to its dataset column."""
+    warning = next((w for w in warnings if w.code == "POSSIBLE_LEAKAGE"), None)
+    if warning is None or warning.column is None:
+        return None
+    feature = next((f for f in spec.features if f.name == warning.column), None)
+    if feature is None:
+        return warning.column
+    return feature.derived_from or feature.name
 
 
 def build_input_spec(spec: FeatureSpec) -> tuple[InputSpecItem, ...]:
