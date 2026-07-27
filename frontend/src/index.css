@@ -118,7 +118,27 @@ h3 { font-size: 0.95rem; }
 }
 .chip-numeric { background: #ecfdf5; color: #047857; }
 .chip-categorical { background: var(--primary-soft); color: var(--primary); }
+.chip-datetime { background: #fdf4ff; color: #a21caf; }
 .chip-excluded { background: #f1f5f9; color: #94a3b8; }
+
+.page-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.title-actions { display: flex; gap: 0.5rem; }
+
+.inline-select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-soft);
+}
 
 .banner {
   border-radius: var(--radius);
@@ -328,6 +348,35 @@ h3 { font-size: 0.95rem; }
 }
 .proba-row .proba-label { width: 90px; overflow: hidden; text-overflow: ellipsis; }
 .proba-row .proba-value { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Per-prediction explanation bars */
+.explanation { margin-bottom: 1.25rem; }
+.explanation-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+  font-size: 0.83rem;
+}
+.explanation-label {
+  width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.explanation-track {
+  flex: 1;
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.explanation-fill { height: 100%; border-radius: 4px; transition: width 0.2s; }
+.explanation-fill.positive { background: var(--success); }
+.explanation-fill.negative { background: var(--danger); }
+.explanation-sign { width: 16px; font-size: 0.7rem; }
+.explanation-sign.positive { color: var(--success); }
+.explanation-sign.negative { color: var(--danger); }
 
 @media (max-width: 900px) {
   .configure-grid, .results-grid { grid-template-columns: 1fr; }

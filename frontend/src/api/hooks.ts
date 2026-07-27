@@ -35,8 +35,19 @@ export function useUploadDataset() {
 
 export function useCreateModel() {
   return useMutation({
-    mutationFn: (input: { dataset_id: string; target_column: string; task?: Task }) =>
-      api.createModel(input),
+    mutationFn: (input: {
+      dataset_id: string
+      target_column: string
+      task?: Task
+      excluded_columns?: string[]
+    }) => api.createModel(input),
+  })
+}
+
+export function useModels(datasetId: string) {
+  return useQuery({
+    queryKey: ['models', 'list', datasetId],
+    queryFn: () => api.listModels(datasetId),
   })
 }
 
@@ -62,6 +73,21 @@ export function usePrediction(modelId: string, inputs: WhatIfValues, enabled: bo
     queryKey: ['models', modelId, 'predict', inputs],
     queryFn: () => api.predict(modelId, inputs),
     enabled,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  })
+}
+
+/** Sensitivity curve for one feature under the current what-if scenario. */
+export function useSensitivity(
+  modelId: string,
+  feature: string | null,
+  inputs: WhatIfValues,
+) {
+  return useQuery({
+    queryKey: ['models', modelId, 'sensitivity', feature, inputs],
+    queryFn: () => api.sensitivity(modelId, feature!, inputs),
+    enabled: feature !== null,
     placeholderData: keepPreviousData,
     staleTime: Infinity,
   })

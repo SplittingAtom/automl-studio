@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, UploadFile
 from app.api.deps import get_dataset_repo, get_settings
 from app.api.envelope import AppError, ok
 from app.config import Settings
-from app.datasets.csv_loading import parse_csv_upload
+from app.datasets.csv_loading import parse_upload
 from app.datasets.repository import DatasetRepository
 from app.datasets.schemas import DatasetMeta, DatasetPreview
 
@@ -26,12 +26,6 @@ def list_datasets(repo: RepoDep) -> dict:
 @router.post("")
 async def upload_dataset(file: UploadFile, repo: RepoDep, settings: SettingsDep) -> dict:
     name = file.filename or "upload.csv"
-    if not name.lower().endswith(".csv"):
-        raise AppError(
-            "INVALID_FILE_TYPE",
-            "Only CSV files are supported. Please export your data as .csv and try again.",
-            status_code=422,
-        )
     content = await file.read()
     if len(content) > settings.max_upload_bytes:
         limit_mb = settings.max_upload_bytes // (1024 * 1024)
@@ -40,7 +34,7 @@ async def upload_dataset(file: UploadFile, repo: RepoDep, settings: SettingsDep)
             f"That file is too large — the limit is {limit_mb} MB.",
             status_code=413,
         )
-    df = parse_csv_upload(content)
+    df = parse_upload(content, name)
     meta = repo.save(df, name=name, source="upload")
     return ok(meta.model_dump())
 

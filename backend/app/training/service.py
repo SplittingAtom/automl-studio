@@ -33,12 +33,19 @@ def create_training_job(
             f'"{request.target_column}" is not a column in {dataset.name}.',
             status_code=422,
         )
-    if column.kind == "unsupported":
+    if column.kind not in ("numeric", "categorical"):
+        reasons = {
+            "unsupported": "is completely empty",
+            "id_like": "looks like an ID",
+            "datetime": "contains dates",
+        }
         raise AppError(
             "UNSUPPORTED_TARGET",
-            f'"{column.name}" is completely empty, so it can\'t be predicted.',
+            f'"{column.name}" {reasons.get(column.kind, "is not usable")}, '
+            "so it can't be predicted. Pick a number or category column.",
             status_code=422,
         )
+    _validate_exclusions(request, dataset)
     task = request.task or detect_task(dataset_repo.load_dataframe(dataset.id)[column.name])
     meta = ModelMeta(
         id=f"mdl_{uuid.uuid4().hex[:10]}",
@@ -48,8 +55,26 @@ def create_training_job(
         task=task,
         status="queued",
         created_at=datetime.now(UTC).isoformat(),
+        user_excluded_columns=request.excluded_columns,
     )
     return model_repo.save_meta(meta)
+
+
+def _validate_exclusions(request: TrainRequest, dataset) -> None:
+    known = {c.name for c in dataset.columns}
+    unknown = set(request.excluded_columns) - known
+    if unknown:
+        raise AppError(
+            "UNKNOWN_COLUMN",
+            f"These columns aren't in the dataset: {', '.join(sorted(unknown))}.",
+            status_code=422,
+        )
+    if request.target_column in request.excluded_columns:
+        raise AppError(
+            "TARGET_EXCLUDED",
+            "The column you're predicting can't also be left out of the model.",
+            status_code=422,
+        )
 
 
 def run_training_job(
@@ -66,7 +91,11 @@ def run_training_job(
     try:
         df = dataset_repo.load_dataframe(meta.dataset_id)
         spec = build_feature_spec(
-            df, meta.target_column, meta.task, max_categories=settings.max_categories
+            df,
+            meta.target_column,
+            meta.task,
+            max_categories=settings.max_categories,
+            user_excluded=meta.user_excluded_columns,
         )
         result = train_model(df, spec, max_rows=settings.max_training_rows)
         model_repo.save_artifact(model_id, result.model, spec)

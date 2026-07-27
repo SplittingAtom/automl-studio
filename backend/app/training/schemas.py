@@ -20,6 +20,7 @@ class TrainRequest(Frozen):
     dataset_id: str
     target_column: str
     task: Task | None = None
+    excluded_columns: tuple[str, ...] = ()
 
     @field_validator("dataset_id", "target_column")
     @classmethod
@@ -53,5 +54,6 @@ class ModelMeta(Frozen):
     importance: tuple[ImportanceItem, ...] | None = None
     input_spec: tuple[InputSpecItem, ...] | None = None
     excluded_columns: tuple[ExcludedColumn, ...] = ()
+    user_excluded_columns: tuple[str, ...] = ()
     warnings: tuple[ProfileWarning, ...] = ()
     n_rows_used: int | None = None

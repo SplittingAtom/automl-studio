@@ -32,6 +32,17 @@ class ModelRepository:
             return None
         return ModelMeta.model_validate(json.loads(meta_path.read_text()))
 
+    def list(self, dataset_id: str | None = None) -> list[ModelMeta]:
+        metas = [
+            self.get(entry.name)
+            for entry in sorted(self._root.iterdir())
+            if (entry / META_FILE).is_file()
+        ]
+        found = [m for m in metas if m is not None]
+        if dataset_id is not None:
+            found = [m for m in found if m.dataset_id == dataset_id]
+        return sorted(found, key=lambda m: m.created_at, reverse=True)
+
     def save_artifact(self, model_id: str, model, spec: FeatureSpec) -> None:
         joblib.dump({"model": model, "spec": spec}, self._root / model_id / ARTIFACT_FILE)
 

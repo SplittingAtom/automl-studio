@@ -29,6 +29,9 @@ class Frozen(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+DatePart = Literal["year", "month", "dayofweek"]
+
+
 class FeatureColumn(Frozen):
     name: str
     kind: Literal["numeric", "categorical"]
@@ -36,6 +39,9 @@ class FeatureColumn(Frozen):
     min_value: float | None = None
     max_value: float | None = None
     default: float | str | None = None
+    # Set for features derived from a date column (e.g. signup_date_year)
+    derived_from: str | None = None
+    date_part: DatePart | None = None
 
 
 class TargetSpec(Frozen):
@@ -46,7 +52,7 @@ class TargetSpec(Frozen):
 
 class ExcludedColumn(Frozen):
     name: str
-    reason: Literal["id_like", "datetime", "high_missing", "unsupported"]
+    reason: Literal["id_like", "datetime", "high_missing", "unsupported", "user_excluded"]
 
 
 class FeatureSpec(Frozen):
@@ -60,6 +66,7 @@ def build_feature_spec(
     target_column: str,
     task: Literal["classification", "regression"],
     max_categories: int = DEFAULT_MAX_CATEGORIES,
+    user_excluded: tuple[str, ...] = (),
 ) -> FeatureSpec:
     if target_column not in df.columns:
         raise TrainingError("UNKNOWN_COLUMN", f'Column "{target_column}" is not in this dataset.')
@@ -76,6 +83,16 @@ def build_feature_spec(
         if name == target_column:
             continue
         col = profile[str(name)]
+        if col.name in user_excluded:
+            excluded.append(ExcludedColumn(name=col.name, reason="user_excluded"))
+            continue
+        if col.kind == "datetime":
+            derived = _datetime_features(df[name], str(name))
+            if derived:
+                features.extend(derived)
+            else:
+                excluded.append(ExcludedColumn(name=col.name, reason="datetime"))
+            continue
         reason = _exclusion_reason(col)
         if reason is not None:
             excluded.append(ExcludedColumn(name=col.name, reason=reason))
@@ -102,12 +119,9 @@ def build_feature_spec(
 def apply_feature_spec(df: pd.DataFrame, spec: FeatureSpec) -> pd.DataFrame:
     """Return a new frame with exactly the spec's columns, typed for XGBoost."""
     data = {}
+    parsed_dates: dict[str, pd.Series] = {}
     for feature in spec.features:
-        source = (
-            df[feature.name]
-            if feature.name in df.columns
-            else pd.Series([None] * len(df), index=df.index)
-        )
+        source = _feature_source(df, feature, parsed_dates)
         if feature.kind == "numeric":
             data[feature.name] = pd.to_numeric(source, errors="coerce").astype("float64")
         else:
@@ -115,8 +129,45 @@ def apply_feature_spec(df: pd.DataFrame, spec: FeatureSpec) -> pd.DataFrame:
     return pd.DataFrame(data, index=df.index)
 
 
+def _feature_source(
+    df: pd.DataFrame, feature: FeatureColumn, parsed_dates: dict[str, pd.Series]
+) -> pd.Series:
+    # Direct value wins: at predict time what-if inputs carry the derived
+    # feature names (e.g. signup_date_year) as plain numeric columns.
+    if feature.name in df.columns:
+        return df[feature.name]
+    if feature.derived_from is not None and feature.derived_from in df.columns:
+        if feature.derived_from not in parsed_dates:
+            parsed_dates[feature.derived_from] = pd.to_datetime(
+                df[feature.derived_from], errors="coerce", format="mixed"
+            )
+        return getattr(parsed_dates[feature.derived_from].dt, feature.date_part)
+    return pd.Series([None] * len(df), index=df.index)
+
+
+def _datetime_features(series: pd.Series, name: str) -> list[FeatureColumn]:
+    parsed = pd.to_datetime(series, errors="coerce", format="mixed")
+    features = []
+    for part in ("year", "month", "dayofweek"):
+        values = pd.to_numeric(getattr(parsed.dt, part), errors="coerce").dropna()
+        if values.nunique() < 2:
+            continue  # a constant part carries no signal
+        features.append(
+            FeatureColumn(
+                name=f"{name}_{part}",
+                kind="numeric",
+                min_value=float(values.min()),
+                max_value=float(values.max()),
+                default=float(values.median()),
+                derived_from=name,
+                date_part=part,
+            )
+        )
+    return features
+
+
 def _exclusion_reason(col: ColumnProfile) -> str | None:
-    if col.kind in ("id_like", "datetime", "unsupported"):
+    if col.kind in ("id_like", "unsupported"):
         return col.kind
     if col.missing_pct > HIGH_MISSING_PCT:
         return "high_missing"

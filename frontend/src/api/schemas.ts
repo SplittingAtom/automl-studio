@@ -80,8 +80,15 @@ export const ModelMetaSchema = z.object({
   importance: z.array(z.object({ feature: z.string(), score: z.number() })).nullable(),
   input_spec: z.array(InputSpecItemSchema).nullable(),
   excluded_columns: z.array(z.object({ name: z.string(), reason: z.string() })),
+  user_excluded_columns: z.array(z.string()),
   warnings: z.array(WarningSchema),
   n_rows_used: z.number().nullable(),
+})
+
+export const ExplanationSchema = z.object({
+  items: z.array(z.object({ feature: z.string(), contribution: z.number() })),
+  baseline: z.number(),
+  toward_label: z.string().nullable(),
 })
 
 export const PredictResponseSchema = z.object({
@@ -89,7 +96,18 @@ export const PredictResponseSchema = z.object({
   probabilities: z
     .array(z.object({ label: z.string(), probability: z.number() }))
     .nullable(),
+  explanation: ExplanationSchema.nullable(),
   elapsed_ms: z.number(),
+})
+
+export const SensitivityResponseSchema = z.object({
+  feature: z.string(),
+  kind: z.enum(['numeric', 'categorical']),
+  output_label: z.string(),
+  current_value: z.union([z.number(), z.string()]).nullable(),
+  points: z.array(
+    z.object({ value: z.union([z.number(), z.string()]), output: z.number() }),
+  ),
 })
 
 export type ColumnKind = z.infer<typeof ColumnKindSchema>
@@ -102,4 +120,6 @@ export type ModelStatus = z.infer<typeof ModelStatusSchema>
 export type InputSpecItem = z.infer<typeof InputSpecItemSchema>
 export type ModelMeta = z.infer<typeof ModelMetaSchema>
 export type PredictResponse = z.infer<typeof PredictResponseSchema>
+export type Explanation = z.infer<typeof ExplanationSchema>
+export type SensitivityResponse = z.infer<typeof SensitivityResponseSchema>
 export type WhatIfValues = Record<string, number | string>

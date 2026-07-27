@@ -4,9 +4,7 @@ import { useModel } from '../../api/hooks'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { WarningBanner } from '../../components/WarningBanner'
 import { taskLabel } from '../../lib/formatters'
-import { WhatIfPanel } from '../whatif/WhatIfPanel'
-import { ImportanceChart } from './ImportanceChart'
-import { MetricsCards } from './MetricsCards'
+import { ResultsDashboard } from './ResultsDashboard'
 import { TrainingProgress } from './TrainingProgress'
 
 export function ModelPage() {
@@ -36,32 +34,26 @@ export function ModelPage() {
 
   return (
     <div>
-      <h1>
-        Predicting <em>{meta.target_column}</em> — {meta.dataset_name}
-      </h1>
-      <p className="muted">
-        {taskLabel(meta.task)} · trained on {meta.n_rows_used?.toLocaleString()} rows
-      </p>
-      <WarningBanner warnings={meta.warnings} />
-
-      <div className="results-grid">
+      <div className="page-title-row">
         <div>
-          <MetricsCards meta={meta} />
-          <div className="card">
-            <h2>What drives the predictions?</h2>
-            <p className="muted small">
-              The share of the model’s decisions each column is responsible for.
-            </p>
-            <ImportanceChart importance={meta.importance ?? []} />
-            {meta.excluded_columns.length > 0 && (
-              <p className="muted small" style={{ marginBottom: 0 }}>
-                Not used: {meta.excluded_columns.map((c) => c.name).join(', ')}
-              </p>
-            )}
-          </div>
+          <h1>
+            Predicting <em>{meta.target_column}</em> — {meta.dataset_name}
+          </h1>
+          <p className="muted">
+            {taskLabel(meta.task)} · trained on {meta.n_rows_used?.toLocaleString()} rows
+          </p>
         </div>
-        <WhatIfPanel model={meta} />
+        <div className="title-actions">
+          <Link className="btn" to={`/datasets/${meta.dataset_id}/models`}>
+            Compare models
+          </Link>
+          <Link className="btn" to={`/datasets/${meta.dataset_id}/configure`}>
+            Train another
+          </Link>
+        </div>
       </div>
+      <WarningBanner warnings={meta.warnings} />
+      <ResultsDashboard meta={meta} />
     </div>
   )
 }

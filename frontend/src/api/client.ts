@@ -6,10 +6,12 @@ import {
   EnvelopeSchema,
   ModelMetaSchema,
   PredictResponseSchema,
+  SensitivityResponseSchema,
   type DatasetMeta,
   type DatasetPreview,
   type ModelMeta,
   type PredictResponse,
+  type SensitivityResponse,
   type Task,
   type WhatIfValues,
 } from './schemas'
@@ -81,6 +83,7 @@ export const api = {
     dataset_id: string
     target_column: string
     task?: Task
+    excluded_columns?: string[]
   }): Promise<ModelMeta> =>
     request(ModelMetaSchema, '/api/models', {
       method: 'POST',
@@ -91,10 +94,24 @@ export const api = {
   getModel: (id: string): Promise<ModelMeta> =>
     request(ModelMetaSchema, `/api/models/${id}`),
 
+  listModels: (datasetId: string): Promise<ModelMeta[]> =>
+    request(ModelMetaSchema.array(), `/api/models?dataset_id=${encodeURIComponent(datasetId)}`),
+
   predict: (modelId: string, inputs: WhatIfValues): Promise<PredictResponse> =>
     request(PredictResponseSchema, `/api/models/${modelId}/predict`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inputs }),
+    }),
+
+  sensitivity: (
+    modelId: string,
+    feature: string,
+    inputs: WhatIfValues,
+  ): Promise<SensitivityResponse> =>
+    request(SensitivityResponseSchema, `/api/models/${modelId}/sensitivity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feature, inputs }),
     }),
 }

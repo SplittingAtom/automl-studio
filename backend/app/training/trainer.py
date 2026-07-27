@@ -14,6 +14,7 @@ from sklearn.metrics import (
     root_mean_squared_error,
 )
 from sklearn.model_selection import train_test_split
+from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier, XGBRegressor
 
 from app.datasets.schemas import ProfileWarning
@@ -88,7 +89,11 @@ def train_model(
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_FRACTION, random_state=SEED, stratify=stratify
     )
-    model, best_iteration = _fit(X_train, y_train, is_classification)
+    balance = (
+        is_classification
+        and y.value_counts(normalize=True).min() < IMBALANCE_WARNING_FRACTION
+    )
+    model, best_iteration = _fit(X_train, y_train, is_classification, balance)
     metrics = (
         _classification_metrics(model, X_test, y_test, spec)
         if is_classification
@@ -137,20 +142,21 @@ def _encode_target(data, spec, warnings) -> pd.Series:
             ProfileWarning(
                 code="CLASS_IMBALANCE",
                 message=(
-                    f'"{rare}" appears in under {IMBALANCE_WARNING_FRACTION:.0%} of rows, '
-                    "so predictions for it may be unreliable."
+                    f'"{rare}" appears in under {IMBALANCE_WARNING_FRACTION:.0%} of rows — '
+                    "those rows were given extra weight during training, but predictions "
+                    "for it may still be less reliable."
                 ),
             )
         )
     return y
 
 
-def _fit(X_train, y_train, is_classification):
+def _fit(X_train, y_train, is_classification, balance=False):
     estimator_cls = XGBClassifier if is_classification else XGBRegressor
     use_early_stopping = len(X_train) >= EARLY_STOPPING_MIN_ROWS
     if not use_early_stopping:
         model = estimator_cls(**XGB_PARAMS)
-        model.fit(X_train, y_train, verbose=False)
+        model.fit(X_train, y_train, sample_weight=_weights(y_train, balance), verbose=False)
         return model, None
 
     stratify = y_train if is_classification and y_train.value_counts().min() >= 2 else None
@@ -158,8 +164,19 @@ def _fit(X_train, y_train, is_classification):
         X_train, y_train, test_size=VALIDATION_FRACTION, random_state=SEED, stratify=stratify
     )
     model = estimator_cls(**XGB_PARAMS, early_stopping_rounds=25)
-    model.fit(X_fit, y_fit, eval_set=[(X_val, y_val)], verbose=False)
+    model.fit(
+        X_fit,
+        y_fit,
+        sample_weight=_weights(y_fit, balance),
+        eval_set=[(X_val, y_val)],
+        verbose=False,
+    )
     return model, int(model.best_iteration)
+
+
+def _weights(y, balance: bool):
+    """Give minority-class rows extra weight when the target is imbalanced."""
+    return compute_sample_weight("balanced", y) if balance else None
 
 
 def _classification_metrics(model, X_test, y_test, spec) -> dict[str, Any]:

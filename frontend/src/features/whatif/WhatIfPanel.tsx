@@ -1,25 +1,28 @@
-import { useMemo } from 'react'
-
-import { usePrediction } from '../../api/hooks'
-import type { ModelMeta } from '../../api/schemas'
+import type { ModelMeta, PredictResponse, WhatIfValues } from '../../api/schemas'
 import { ErrorBanner } from '../../components/ErrorBanner'
-import { useDebouncedValue } from '../../lib/useDebouncedValue'
 import { CategorySelect } from './CategorySelect'
+import { ExplanationBars } from './ExplanationBars'
 import { NumericSlider } from './NumericSlider'
 import { PredictionDisplay } from './PredictionDisplay'
-import { useWhatIfState } from './useWhatIfState'
 
-const DEBOUNCE_MS = 250
-
-export function WhatIfPanel({ model }: { model: ModelMeta }) {
-  const spec = useMemo(() => model.input_spec ?? [], [model.input_spec])
-  const { values, setValue, reset } = useWhatIfState(spec)
-  const debouncedValues = useDebouncedValue(values, DEBOUNCE_MS)
-  const prediction = usePrediction(model.id, debouncedValues, spec.length > 0)
-
-  const updating =
-    prediction.isFetching ||
-    JSON.stringify(values) !== JSON.stringify(debouncedValues)
+export function WhatIfPanel({
+  model,
+  values,
+  setValue,
+  reset,
+  prediction,
+  error,
+  updating,
+}: {
+  model: ModelMeta
+  values: WhatIfValues
+  setValue: (name: string, value: number | string) => void
+  reset: () => void
+  prediction: PredictResponse | undefined
+  error: unknown
+  updating: boolean
+}) {
+  const spec = model.input_spec ?? []
 
   return (
     <div className="card">
@@ -29,11 +32,17 @@ export function WhatIfPanel({ model }: { model: ModelMeta }) {
       </p>
 
       <PredictionDisplay
-        prediction={prediction.data}
+        prediction={prediction}
         targetColumn={model.target_column}
         updating={updating}
       />
-      <ErrorBanner error={prediction.error} />
+      {prediction?.explanation && (
+        <ExplanationBars
+          explanation={prediction.explanation}
+          isClassification={model.task === 'classification'}
+        />
+      )}
+      <ErrorBanner error={error} />
 
       {spec.map((item) =>
         item.kind === 'numeric' ? (

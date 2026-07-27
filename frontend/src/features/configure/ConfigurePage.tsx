@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import { useCreateModel, useDataset, useDatasetPreview } from '../../api/hooks'
+import { useCreateModel, useDataset, useDatasetPreview, useModels } from '../../api/hooks'
 import type { Task } from '../../api/schemas'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { WarningBanner } from '../../components/WarningBanner'
@@ -20,8 +20,11 @@ export function ConfigurePage() {
   const preview = useDatasetPreview(id)
   const createModel = useCreateModel()
 
+  const models = useModels(id)
+
   const [target, setTarget] = useState<string | null>(null)
   const [taskOverride, setTaskOverride] = useState<Task | null>(null)
+  const [excluded, setExcluded] = useState<Set<string>>(new Set())
 
   if (dataset.isLoading) return <p className="muted">Loading dataset…</p>
   if (dataset.error || !dataset.data) return <ErrorBanner error={dataset.error} />
@@ -30,22 +33,48 @@ export function ConfigurePage() {
   const targetColumn = meta.columns.find((c) => c.name === target) ?? null
   const detectedTask = targetColumn ? detectTask(targetColumn.kind) : null
   const task = taskOverride ?? detectedTask
+  const previousModels = (models.data ?? []).length
+
+  const toggleUse = (name: string) => {
+    setExcluded((current) => {
+      const next = new Set(current)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   const handleTrain = () => {
     if (!target || !task) return
     createModel.mutate(
-      { dataset_id: meta.id, target_column: target, task },
+      {
+        dataset_id: meta.id,
+        target_column: target,
+        task,
+        excluded_columns: [...excluded].filter((name) => name !== target),
+      },
       { onSuccess: (model) => navigate(`/models/${model.id}`) },
     )
   }
 
   return (
     <div>
-      <h1>{meta.name}</h1>
-      <p className="muted">
-        {meta.row_count.toLocaleString()} rows · {meta.column_count} columns. Choose the
-        column you want the model to predict.
-      </p>
+      <div className="page-title-row">
+        <div>
+          <h1>{meta.name}</h1>
+          <p className="muted">
+            {meta.row_count.toLocaleString()} rows · {meta.column_count} columns. Choose
+            the column you want the model to predict.
+          </p>
+        </div>
+        {previousModels > 0 && (
+          <div className="title-actions">
+            <Link className="btn" to={`/datasets/${meta.id}/models`}>
+              Previous models ({previousModels})
+            </Link>
+          </div>
+        )}
+      </div>
       <WarningBanner warnings={meta.warnings} />
 
       <div className="configure-grid">
@@ -54,10 +83,12 @@ export function ConfigurePage() {
           <TargetPicker
             columns={meta.columns}
             selected={target}
+            excluded={excluded}
             onSelect={(name) => {
               setTarget(name)
               setTaskOverride(null)
             }}
+            onToggleUse={toggleUse}
           />
         </div>
 
@@ -87,6 +118,11 @@ export function ConfigurePage() {
               {taskOverride === null && (
                 <p className="muted small">
                   Detected automatically — override it if that looks wrong.
+                </p>
+              )}
+              {excluded.size > 0 && (
+                <p className="muted small">
+                  Leaving out: {[...excluded].filter((n) => n !== target).join(', ')}
                 </p>
               )}
               <ErrorBanner error={createModel.error} />

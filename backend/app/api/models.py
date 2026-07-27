@@ -10,7 +10,8 @@ from app.config import Settings
 from app.datasets.repository import DatasetRepository
 from app.prediction.model_cache import ModelCache
 from app.prediction.predictor import predict
-from app.prediction.schemas import PredictRequest
+from app.prediction.schemas import PredictRequest, SensitivityRequest
+from app.prediction.sensitivity import compute_sensitivity
 from app.training import service
 from app.training.repository import ModelRepository
 from app.training.schemas import ModelMeta, TrainRequest
@@ -38,6 +39,11 @@ def create_model(
     return ok(meta.model_dump())
 
 
+@router.get("")
+def list_models(model_repo: ModelRepoDep, dataset_id: str | None = None) -> dict:
+    return ok([m.model_dump() for m in model_repo.list(dataset_id)])
+
+
 @router.get("/{model_id}")
 def get_model(model_id: str, model_repo: ModelRepoDep) -> dict:
     return ok(_require(model_repo, model_id).model_dump())
@@ -59,6 +65,25 @@ def predict_model(
         )
     model, spec = cache.get(model_id, lambda: model_repo.load_artifact(model_id))
     response = predict(model, spec, request.inputs)
+    return ok(response.model_dump())
+
+
+@router.post("/{model_id}/sensitivity")
+def sensitivity_model(
+    model_id: str,
+    request: SensitivityRequest,
+    model_repo: ModelRepoDep,
+    cache: CacheDep,
+) -> dict:
+    meta = _require(model_repo, model_id)
+    if meta.status != "complete":
+        raise AppError(
+            "MODEL_NOT_READY",
+            "This model hasn't finished training yet.",
+            status_code=409,
+        )
+    model, spec = cache.get(model_id, lambda: model_repo.load_artifact(model_id))
+    response = compute_sensitivity(model, spec, request.inputs, request.feature)
     return ok(response.model_dump())
 
 

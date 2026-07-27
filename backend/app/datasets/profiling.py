@@ -129,7 +129,10 @@ def _build_warnings(columns: tuple[ColumnProfile, ...]) -> list[ProfileWarning]:
                 ProfileWarning(
                     code="DATETIME_COLUMN",
                     column=col.name,
-                    message=f'"{col.name}" contains dates, which are not supported yet — it will be left out.',
+                    message=(
+                        f'"{col.name}" contains dates — the model will use its year, '
+                        "month, and day of week."
+                    ),
                 )
             )
         elif col.missing_pct > HIGH_MISSING_PCT:
