@@ -4,7 +4,7 @@ from typing import Annotated
 
 import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from app.api.deps import get_dataset_repo, get_model_cache, get_model_repo, get_settings
 from app.api.envelope import AppError, ok
@@ -15,6 +15,7 @@ from app.prediction.predictor import predict
 from app.prediction.schemas import PredictRequest, SensitivityRequest
 from app.prediction.sensitivity import compute_sensitivity
 from app.training import service
+from app.training.export import build_export_zip
 from app.training.repository import ModelRepository
 from app.training.schemas import ModelMeta, TrainRequest
 
@@ -119,6 +120,20 @@ def download_validation(model_id: str, model_repo: ModelRepoDep) -> FileResponse
         )
     return FileResponse(
         path, media_type="text/csv", filename=f"validation_{model_id}.csv"
+    )
+
+
+@router.get("/{model_id}/export")
+def export_model(model_id: str, model_repo: ModelRepoDep, cache: CacheDep) -> Response:
+    meta = _require_complete(model_repo, model_id)
+    artifact = cache.get(model_id, lambda: model_repo.load_artifact(model_id))
+    payload = build_export_zip(meta, artifact)
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="automl_model_{model_id}.zip"'
+        },
     )
 
 

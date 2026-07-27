@@ -45,6 +45,14 @@ export function ModelPage() {
           </p>
         </div>
         <div className="title-actions">
+          <a
+            className="btn"
+            href={`/api/models/${meta.id}/export`}
+            download
+            title="Self-contained scoring kit: model + predict.py, runs anywhere with Python"
+          >
+            Download model
+          </a>
           <Link className="btn" to={`/datasets/${meta.dataset_id}/models`}>
             Compare models
           </Link>
