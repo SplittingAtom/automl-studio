@@ -34,6 +34,7 @@ export function ConfigurePage() {
   const [target, setTarget] = useState<string | null>(null)
   const [taskOverride, setTaskOverride] = useState<Task | null>(null)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  const [thorough, setThorough] = useState(false)
 
   if (dataset.isLoading) return <p className="muted">Loading dataset…</p>
   if (dataset.error || !dataset.data) return <ErrorBanner error={dataset.error} />
@@ -66,6 +67,7 @@ export function ConfigurePage() {
         target_column: target,
         task,
         excluded_columns: [...excluded].filter((name) => name !== target),
+        effort: thorough ? 'thorough' : 'standard',
       },
       { onSuccess: (model) => navigate(`/models/${model.id}`) },
     )
@@ -157,6 +159,14 @@ export function ConfigurePage() {
                   Leaving out: {[...excluded].filter((n) => n !== target).join(', ')}
                 </p>
               )}
+              <label className="effort-toggle">
+                <input
+                  type="checkbox"
+                  checked={thorough}
+                  onChange={(event) => setThorough(event.target.checked)}
+                />
+                Try harder — test a dozen model variations (takes longer)
+              </label>
               <ErrorBanner error={createModel.error} />
               <button
                 className="btn btn-primary"

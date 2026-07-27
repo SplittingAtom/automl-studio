@@ -8,6 +8,8 @@ import { WhatIfPanel } from '../whatif/WhatIfPanel'
 import { useWhatIfState } from '../whatif/useWhatIfState'
 import { ImportanceChart } from './ImportanceChart'
 import { MetricsCards } from './MetricsCards'
+import { ThresholdCard } from './ThresholdCard'
+import { ValidationCard } from './ValidationCard'
 
 const DEBOUNCE_MS = 250
 
@@ -20,9 +22,11 @@ export function ResultsDashboard({ meta }: { meta: ModelMeta }) {
     prediction.isFetching || JSON.stringify(values) !== JSON.stringify(debouncedValues)
 
   return (
-    <div className="results-grid">
+    <div>
+      <div className="results-grid">
       <div>
         <MetricsCards meta={meta} />
+        <ThresholdCard meta={meta} />
         <div className="card">
           <h2>What drives the predictions?</h2>
           <p className="muted small">
@@ -46,6 +50,8 @@ export function ResultsDashboard({ meta }: { meta: ModelMeta }) {
         error={prediction.error}
         updating={updating}
       />
+      </div>
+      <ValidationCard meta={meta} />
     </div>
   )
 }

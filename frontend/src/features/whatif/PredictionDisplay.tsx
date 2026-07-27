@@ -27,6 +27,12 @@ export function PredictionDisplay({
     <div className={`prediction-display${updating ? ' updating' : ''}`}>
       <div className="muted small">Predicted {targetColumn}</div>
       <div className="value">{value}</div>
+      {prediction.interval && (
+        <div className="muted small">
+          likely between {formatNumber(prediction.interval.low)} and{' '}
+          {formatNumber(prediction.interval.high)}
+        </div>
+      )}
       {prediction.probabilities && (
         <div>
           {prediction.probabilities.map((entry) => (

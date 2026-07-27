@@ -16,11 +16,15 @@ class Frozen(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+Effort = Literal["standard", "thorough"]
+
+
 class TrainRequest(Frozen):
     dataset_id: str
     target_column: str
     task: Task | None = None
     excluded_columns: tuple[str, ...] = ()
+    effort: Effort = "standard"
 
     @field_validator("dataset_id", "target_column")
     @classmethod
@@ -48,6 +52,7 @@ class ModelMeta(Frozen):
     target_column: str
     task: Task
     status: ModelStatus
+    effort: Effort = "standard"
     created_at: str
     error: str | None = None
     metrics: dict[str, Any] | None = None

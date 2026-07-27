@@ -22,6 +22,7 @@ describe('PredictResponseSchema', () => {
         baseline: -0.5,
         toward_label: 'survived',
       },
+      interval: null,
       elapsed_ms: 2.1,
     })
     expect(parsed.explanation?.items[0].feature).toBe('sex')
@@ -32,9 +33,11 @@ describe('PredictResponseSchema', () => {
       prediction: 231400.5,
       probabilities: null,
       explanation: { items: [], baseline: 200000, toward_label: null },
+      interval: { low: 180000, high: 285000 },
       elapsed_ms: 1.0,
     })
     expect(parsed.prediction).toBe(231400.5)
+    expect(parsed.interval?.low).toBe(180000)
   })
 })
 

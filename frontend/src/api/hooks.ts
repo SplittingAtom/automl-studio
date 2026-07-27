@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-query'
 
 import { api } from './client'
-import type { ModelMeta, Task, WhatIfValues } from './schemas'
+import type { Effort, ModelMeta, Task, WhatIfValues } from './schemas'
 
 const POLL_INTERVAL_MS = 1000
 
@@ -58,6 +58,7 @@ export function useCreateModel() {
       target_column: string
       task?: Task
       excluded_columns?: string[]
+      effort?: Effort
     }) => api.createModel(input),
   })
 }
@@ -66,6 +67,15 @@ export function useModels(datasetId: string) {
   return useQuery({
     queryKey: ['models', 'list', datasetId],
     queryFn: () => api.listModels(datasetId),
+  })
+}
+
+export function useValidationRows(modelId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['models', modelId, 'validation'],
+    queryFn: () => api.getValidationRows(modelId),
+    enabled,
+    retry: false, // older models have no saved validation; don't hammer the 404
   })
 }
 

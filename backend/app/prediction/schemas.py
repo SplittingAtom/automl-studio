@@ -35,10 +35,18 @@ class Explanation(Frozen):
     toward_label: str | None = None
 
 
+class PredictionInterval(Frozen):
+    """80% band: the true value lands inside it about 8 times in 10."""
+
+    low: float
+    high: float
+
+
 class PredictResponse(Frozen):
     prediction: float | str
     probabilities: tuple[ClassProbability, ...] | None = None
     explanation: Explanation | None = None
+    interval: PredictionInterval | None = None
     elapsed_ms: float
 
 

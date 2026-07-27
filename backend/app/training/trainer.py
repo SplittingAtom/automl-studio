@@ -1,7 +1,14 @@
-"""Train an XGBoost model with sensible defaults — no hyperparameter search."""
+"""Train an XGBoost model with sensible defaults.
 
-from typing import Any
+Standard effort uses fixed parameters; "thorough" adds a small random search.
+Every run also produces 5-fold CV stats, a held-out validation frame, a
+threshold curve (binary), and a quantile interval model (regression).
+"""
 
+import logging
+from typing import Any, Literal
+
+import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 from sklearn.metrics import (
@@ -13,13 +20,15 @@ from sklearn.metrics import (
     roc_auc_score,
     root_mean_squared_error,
 )
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier, XGBRegressor
 
 from app.datasets.schemas import ProfileWarning
 from app.training.baseline import baseline_metrics
 from app.training.preprocessing import FeatureSpec, TrainingError, apply_feature_spec
+
+logger = logging.getLogger(__name__)
 
 SEED = 42
 TEST_FRACTION = 0.2
@@ -29,6 +38,12 @@ MIN_TRAINING_ROWS = 50
 MAX_TARGET_MISSING_PCT = 30.0
 IMBALANCE_WARNING_FRACTION = 0.10
 LEAKAGE_SCORE_THRESHOLD = 0.999
+CV_FOLDS = 5
+CV_MAX_ROWS = 8000
+THRESHOLD_STEPS = 21
+INTERVAL_QUANTILES = [0.1, 0.9]  # 80% prediction band
+TUNING_TRIALS = 12
+TUNING_MAX_ROWS = 10_000
 
 XGB_PARAMS: dict[str, Any] = {
     "n_estimators": 500,
@@ -57,10 +72,15 @@ class TrainingResult(BaseModel):
     n_rows_used: int
     best_iteration: int | None
     model: Any  # fitted XGBoost estimator; persisted via joblib, never JSON
+    interval_model: Any = None  # quantile regressor for prediction bands
+    validation: Any = None  # held-out rows with actual vs predicted (DataFrame)
 
 
 def train_model(
-    df: pd.DataFrame, spec: FeatureSpec, max_rows: int = 100_000
+    df: pd.DataFrame,
+    spec: FeatureSpec,
+    max_rows: int = 100_000,
+    effort: Literal["standard", "thorough"] = "standard",
 ) -> TrainingResult:
     warnings: list[ProfileWarning] = []
     data, n_dropped = _drop_missing_target(df, spec, warnings)
@@ -94,13 +114,20 @@ def train_model(
         is_classification
         and y.value_counts(normalize=True).min() < IMBALANCE_WARNING_FRACTION
     )
-    model, best_iteration = _fit(X_train, y_train, is_classification, balance)
+    params = dict(XGB_PARAMS)
+    tuning_trials = 0
+    if effort == "thorough" and len(X_train) >= EARLY_STOPPING_MIN_ROWS:
+        params, tuning_trials = _tuned_params(X_train, y_train, is_classification, balance)
+    model, best_iteration = _fit(X_train, y_train, is_classification, balance, params)
     metrics = (
         _classification_metrics(model, X_test, y_test, spec)
         if is_classification
         else _regression_metrics(model, X_test, y_test)
     )
     metrics.update(baseline_metrics(X_train, X_test, y_train, y_test, spec))
+    metrics.update(_cross_validate(X, y, is_classification, best_iteration, params))
+    if tuning_trials:
+        metrics["tuning_trials"] = tuning_trials
     importance = _importance(model, X.columns)
     _check_leakage(metrics, importance, warnings)
     _check_simple_relationships(metrics, is_classification, warnings)
@@ -111,6 +138,10 @@ def train_model(
         n_rows_used=len(data),
         best_iteration=best_iteration,
         model=model,
+        interval_model=None
+        if is_classification
+        else _fit_interval_model(X_train, y_train, best_iteration),
+        validation=_validation_frame(data, X_test, y_test, spec, model),
     )
 
 
@@ -155,11 +186,12 @@ def _encode_target(data, spec, warnings) -> pd.Series:
     return y
 
 
-def _fit(X_train, y_train, is_classification, balance=False):
+def _fit(X_train, y_train, is_classification, balance=False, params=None):
+    params = params or XGB_PARAMS
     estimator_cls = XGBClassifier if is_classification else XGBRegressor
     use_early_stopping = len(X_train) >= EARLY_STOPPING_MIN_ROWS
     if not use_early_stopping:
-        model = estimator_cls(**XGB_PARAMS)
+        model = estimator_cls(**params)
         model.fit(X_train, y_train, sample_weight=_weights(y_train, balance), verbose=False)
         return model, None
 
@@ -167,7 +199,7 @@ def _fit(X_train, y_train, is_classification, balance=False):
     X_fit, X_val, y_fit, y_val = train_test_split(
         X_train, y_train, test_size=VALIDATION_FRACTION, random_state=SEED, stratify=stratify
     )
-    model = estimator_cls(**XGB_PARAMS, early_stopping_rounds=25)
+    model = estimator_cls(**params, early_stopping_rounds=25)
     model.fit(
         X_fit,
         y_fit,
@@ -176,6 +208,119 @@ def _fit(X_train, y_train, is_classification, balance=False):
         verbose=False,
     )
     return model, int(model.best_iteration)
+
+
+def _tuned_params(X_train, y_train, is_classification, balance):
+    """Small random search; scores each trial on an early-stopping val split."""
+    rng = np.random.default_rng(SEED)
+    stratify = y_train if is_classification and y_train.value_counts().min() >= 2 else None
+    X_fit, X_val, y_fit, y_val = train_test_split(
+        X_train, y_train, test_size=VALIDATION_FRACTION, random_state=SEED, stratify=stratify
+    )
+    if len(X_fit) > TUNING_MAX_ROWS:
+        sampled = X_fit.sample(TUNING_MAX_ROWS, random_state=SEED)
+        X_fit, y_fit = sampled, y_fit.loc[sampled.index]
+    estimator_cls = XGBClassifier if is_classification else XGBRegressor
+    best_params, best_score = dict(XGB_PARAMS), None
+    for _ in range(TUNING_TRIALS):
+        trial = {
+            **XGB_PARAMS,
+            "max_depth": int(rng.integers(3, 9)),
+            "learning_rate": round(float(10 ** rng.uniform(-2, -0.7)), 4),
+            "subsample": round(float(rng.uniform(0.6, 1.0)), 3),
+            "colsample_bytree": round(float(rng.uniform(0.6, 1.0)), 3),
+            "min_child_weight": int(rng.choice([1, 2, 4, 8])),
+        }
+        model = estimator_cls(**trial, early_stopping_rounds=25)
+        model.fit(
+            X_fit,
+            y_fit,
+            sample_weight=_weights(y_fit, balance),
+            eval_set=[(X_val, y_val)],
+            verbose=False,
+        )
+        score = float(model.best_score)  # logloss / rmse: lower is better
+        if best_score is None or score < best_score:
+            best_score, best_params = score, trial
+    return best_params, TUNING_TRIALS
+
+
+def _cross_validate(X, y, is_classification, best_iteration, params) -> dict[str, Any]:
+    """K-fold spread of the headline metric — how stable is this model?"""
+    try:
+        if len(X) > CV_MAX_ROWS:
+            X = X.sample(CV_MAX_ROWS, random_state=SEED)
+            y = y.loc[X.index]
+        n_estimators = min(int(best_iteration) + 1 if best_iteration else 300, 300)
+        cv_params = {**params, "n_estimators": n_estimators}
+        use_stratified = is_classification and y.value_counts().min() >= CV_FOLDS
+        splitter = (
+            StratifiedKFold(CV_FOLDS, shuffle=True, random_state=SEED)
+            if use_stratified
+            else KFold(CV_FOLDS, shuffle=True, random_state=SEED)
+        )
+        estimator_cls = XGBClassifier if is_classification else XGBRegressor
+        scores = []
+        for train_idx, test_idx in splitter.split(X, y if use_stratified else None):
+            model = estimator_cls(**cv_params)
+            model.fit(X.iloc[train_idx], y.iloc[train_idx], verbose=False)
+            predicted = model.predict(X.iloc[test_idx])
+            actual = y.iloc[test_idx]
+            score = (
+                accuracy_score(actual, predicted)
+                if is_classification
+                else r2_score(actual, predicted)
+            )
+            scores.append(float(score))
+        return {
+            "cv_mean": round(float(np.mean(scores)), 4),
+            "cv_std": round(float(np.std(scores)), 4),
+            "cv_folds": CV_FOLDS,
+        }
+    except Exception:
+        logger.exception("Cross-validation failed; continuing without it")
+        return {}
+
+
+def _fit_interval_model(X_train, y_train, best_iteration):
+    """Quantile regressor giving an 80% prediction band."""
+    try:
+        params = {
+            **XGB_PARAMS,
+            "objective": "reg:quantileerror",
+            "quantile_alpha": INTERVAL_QUANTILES,
+            "n_estimators": min(int(best_iteration) + 1 if best_iteration else 200, 200),
+        }
+        model = XGBRegressor(**params)
+        model.fit(X_train, y_train, verbose=False)
+        return model
+    except Exception:
+        logger.exception("Interval model failed; predictions will have no band")
+        return None
+
+
+def _validation_frame(data, X_test, y_test, spec, model) -> pd.DataFrame:
+    """Held-out rows with actual vs predicted, for the validation view."""
+    frame = data.loc[X_test.index].copy()
+    predicted_col = _free_name(frame, "predicted")
+    if spec.target.task == "classification":
+        probabilities = model.predict_proba(X_test)
+        winners = probabilities.argmax(axis=1)
+        classes = spec.target.classes
+        frame[predicted_col] = [classes[i] for i in winners]
+        frame[_free_name(frame, "confidence")] = probabilities.max(axis=1).round(4)
+        actual = frame[spec.target.name].astype(str).to_numpy()
+        frame[_free_name(frame, "correct")] = actual == frame[predicted_col].to_numpy()
+    else:
+        predictions = model.predict(X_test).astype(float).round(4)
+        frame[predicted_col] = predictions
+        actual_values = pd.to_numeric(frame[spec.target.name], errors="coerce")
+        frame[_free_name(frame, "error")] = (predictions - actual_values).round(4)
+    return frame
+
+
+def _free_name(frame, name: str) -> str:
+    return name if name not in frame.columns else f"{name}_model"
 
 
 def _weights(y, balance: bool):
@@ -199,7 +344,29 @@ def _classification_metrics(model, X_test, y_test, spec) -> dict[str, Any]:
     if len(classes) == 2:
         probabilities = model.predict_proba(X_test)[:, 1]
         metrics["roc_auc"] = round(float(roc_auc_score(y_test, probabilities)), 4)
+        metrics["threshold_curve"] = _threshold_curve(y_test.to_numpy(), probabilities)
     return metrics
+
+
+def _threshold_curve(actual: np.ndarray, probability_positive: np.ndarray) -> list[dict]:
+    """Precision/recall/accuracy at each decision threshold, for the UI slider."""
+    points = []
+    total_positive = int((actual == 1).sum())
+    for threshold in np.linspace(0.0, 1.0, THRESHOLD_STEPS):
+        flagged = probability_positive >= threshold
+        true_positive = int(((actual == 1) & flagged).sum())
+        false_positive = int(((actual == 0) & flagged).sum())
+        n_flagged = true_positive + false_positive
+        points.append(
+            {
+                "threshold": round(float(threshold), 2),
+                "precision": round(true_positive / n_flagged, 4) if n_flagged else None,
+                "recall": round(true_positive / total_positive, 4) if total_positive else 0.0,
+                "accuracy": round(float((flagged == (actual == 1)).mean()), 4),
+                "flagged_pct": round(100.0 * n_flagged / len(actual), 1),
+            }
+        )
+    return points
 
 
 def _regression_metrics(model, X_test, y_test) -> dict[str, Any]:

@@ -68,12 +68,26 @@ function baselineContext(meta: ModelMeta): string | null {
   return `For context: ${parts.join(' · ')}.`
 }
 
+function consistencyLine(meta: ModelMeta): string | null {
+  const metrics = meta.metrics ?? {}
+  const mean = asNumber(metrics.cv_mean)
+  const std = asNumber(metrics.cv_std)
+  const folds = asNumber(metrics.cv_folds)
+  if (mean === null || std === null) return null
+  const spread = `${formatPercent(Math.max(0, mean - std))}–${formatPercent(Math.min(1, mean + std))}`
+  if (meta.task === 'classification') {
+    return `Consistency check (${folds}-fold): expect roughly ${spread} correct on new data.`
+  }
+  return `Consistency check (${folds}-fold): expect the model to explain roughly ${spread} of the variation on new data.`
+}
+
 export function MetricsCards({ meta }: { meta: ModelMeta }) {
   const metrics = meta.metrics ?? {}
   const cards =
     meta.task === 'classification' ? classificationCards(metrics) : regressionCards(metrics)
   const testRows = asNumber(metrics.test_rows)
   const context = baselineContext(meta)
+  const consistency = consistencyLine(meta)
 
   return (
     <div>
@@ -92,6 +106,7 @@ export function MetricsCards({ meta }: { meta: ModelMeta }) {
         )}
       </div>
       {context && <p className="muted small context-line">{context}</p>}
+      {consistency && <p className="muted small context-line">{consistency}</p>}
     </div>
   )
 }

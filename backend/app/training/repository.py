@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 import joblib
+import pandas as pd
 
 from app.training.preprocessing import FeatureSpec
 from app.training.schemas import ModelMeta
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 META_FILE = "meta.json"
 ARTIFACT_FILE = "model.joblib"
+VALIDATION_FILE = "validation.csv"
 
 
 class ModelRepository:
@@ -43,12 +45,33 @@ class ModelRepository:
             found = [m for m in found if m.dataset_id == dataset_id]
         return sorted(found, key=lambda m: m.created_at, reverse=True)
 
-    def save_artifact(self, model_id: str, model, spec: FeatureSpec) -> None:
-        joblib.dump({"model": model, "spec": spec}, self._root / model_id / ARTIFACT_FILE)
+    def save_artifact(
+        self, model_id: str, model, spec: FeatureSpec, interval_model=None
+    ) -> None:
+        joblib.dump(
+            {"model": model, "spec": spec, "interval_model": interval_model},
+            self._root / model_id / ARTIFACT_FILE,
+        )
 
-    def load_artifact(self, model_id: str) -> tuple[object, FeatureSpec]:
+    def load_artifact(self, model_id: str) -> dict:
         artifact = joblib.load(self._root / model_id / ARTIFACT_FILE)
-        return artifact["model"], artifact["spec"]
+        return {
+            "model": artifact["model"],
+            "spec": artifact["spec"],
+            "interval_model": artifact.get("interval_model"),
+        }
+
+    def save_validation(self, model_id: str, frame: pd.DataFrame) -> None:
+        frame.to_csv(self._root / model_id / VALIDATION_FILE, index=False)
+
+    def validation_path(self, model_id: str) -> Path:
+        return self._root / model_id / VALIDATION_FILE
+
+    def load_validation(self, model_id: str) -> pd.DataFrame | None:
+        path = self.validation_path(model_id)
+        if not path.is_file():
+            return None
+        return pd.read_csv(path)
 
     def fail_interrupted(self) -> None:
         """On startup, mark models stuck in queued/training as failed."""

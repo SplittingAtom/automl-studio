@@ -57,6 +57,7 @@ def create_training_job(
         target_column=request.target_column,
         task=task,
         status="queued",
+        effort=request.effort,
         created_at=datetime.now(UTC).isoformat(),
         user_excluded_columns=request.excluded_columns,
     )
@@ -100,8 +101,12 @@ def run_training_job(
             max_categories=settings.max_categories,
             user_excluded=meta.user_excluded_columns,
         )
-        result = train_model(df, spec, max_rows=settings.max_training_rows)
-        model_repo.save_artifact(model_id, result.model, spec)
+        result = train_model(
+            df, spec, max_rows=settings.max_training_rows, effort=meta.effort
+        )
+        model_repo.save_artifact(model_id, result.model, spec, result.interval_model)
+        if result.validation is not None:
+            model_repo.save_validation(model_id, result.validation)
         model_repo.save_meta(
             meta.model_copy(
                 update={

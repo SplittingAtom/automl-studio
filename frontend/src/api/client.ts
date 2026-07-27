@@ -13,9 +13,12 @@ import {
   type DatasetPreview,
   type ModelMeta,
   type PredictResponse,
+  type Effort,
   type SensitivityResponse,
   type Task,
+  type ValidationRows,
   type WhatIfValues,
+  ValidationRowsSchema,
 } from './schemas'
 
 export class ApiError extends Error {
@@ -99,6 +102,7 @@ export const api = {
     target_column: string
     task?: Task
     excluded_columns?: string[]
+    effort?: Effort
   }): Promise<ModelMeta> =>
     request(ModelMetaSchema, '/api/models', {
       method: 'POST',
@@ -111,6 +115,9 @@ export const api = {
 
   listModels: (datasetId: string): Promise<ModelMeta[]> =>
     request(ModelMetaSchema.array(), `/api/models?dataset_id=${encodeURIComponent(datasetId)}`),
+
+  getValidationRows: (modelId: string, rows = 15): Promise<ValidationRows> =>
+    request(ValidationRowsSchema, `/api/models/${modelId}/validation?rows=${rows}`),
 
   predict: (modelId: string, inputs: WhatIfValues): Promise<PredictResponse> =>
     request(PredictResponseSchema, `/api/models/${modelId}/predict`, {

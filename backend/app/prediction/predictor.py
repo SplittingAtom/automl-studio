@@ -6,11 +6,11 @@ import pandas as pd
 
 from app.api.envelope import AppError
 from app.prediction.explanation import explain_prediction
-from app.prediction.schemas import ClassProbability, PredictResponse
+from app.prediction.schemas import ClassProbability, PredictionInterval, PredictResponse
 from app.training.preprocessing import FeatureSpec, apply_feature_spec
 
 
-def predict(model, spec: FeatureSpec, inputs: dict) -> PredictResponse:
+def predict(model, spec: FeatureSpec, inputs: dict, interval_model=None) -> PredictResponse:
     row = validated_row(spec, inputs)
     frame = apply_feature_spec(pd.DataFrame([row]), spec)
     started = time.perf_counter()
@@ -19,8 +19,19 @@ def predict(model, spec: FeatureSpec, inputs: dict) -> PredictResponse:
     else:
         response = {"prediction": round(float(model.predict(frame)[0]), 4), "probabilities": None}
     explanation = explain_prediction(model, spec, frame)
+    interval = _interval(interval_model, frame) if spec.target.task == "regression" else None
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    return PredictResponse(**response, explanation=explanation, elapsed_ms=elapsed_ms)
+    return PredictResponse(
+        **response, explanation=explanation, interval=interval, elapsed_ms=elapsed_ms
+    )
+
+
+def _interval(interval_model, frame) -> PredictionInterval | None:
+    if interval_model is None:
+        return None
+    quantiles = interval_model.predict(frame)[0]
+    low, high = sorted(round(float(q), 4) for q in quantiles)
+    return PredictionInterval(low=low, high=high)
 
 
 def validated_row(spec: FeatureSpec, inputs: dict) -> dict:

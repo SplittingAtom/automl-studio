@@ -74,6 +74,7 @@ export const ModelMetaSchema = z.object({
   target_column: z.string(),
   task: TaskSchema,
   status: ModelStatusSchema,
+  effort: z.enum(['standard', 'thorough']),
   created_at: z.string(),
   error: z.string().nullable(),
   metrics: z.record(z.string(), z.unknown()).nullable(),
@@ -99,7 +100,22 @@ export const PredictResponseSchema = z.object({
     .array(z.object({ label: z.string(), probability: z.number() }))
     .nullable(),
   explanation: ExplanationSchema.nullable(),
+  interval: z.object({ low: z.number(), high: z.number() }).nullable(),
   elapsed_ms: z.number(),
+})
+
+export const ValidationRowsSchema = z.object({
+  columns: z.array(z.string()),
+  rows: z.array(z.record(z.string(), z.unknown())),
+  total_rows: z.number(),
+})
+
+export const ThresholdPointSchema = z.object({
+  threshold: z.number(),
+  precision: z.number().nullable(),
+  recall: z.number(),
+  accuracy: z.number(),
+  flagged_pct: z.number(),
 })
 
 export const SensitivityResponseSchema = z.object({
@@ -149,4 +165,7 @@ export type Explanation = z.infer<typeof ExplanationSchema>
 export type TargetCandidate = z.infer<typeof TargetCandidateSchema>
 export type DatasetAnalysis = z.infer<typeof DatasetAnalysisSchema>
 export type SensitivityResponse = z.infer<typeof SensitivityResponseSchema>
+export type ValidationRows = z.infer<typeof ValidationRowsSchema>
+export type ThresholdPoint = z.infer<typeof ThresholdPointSchema>
+export type Effort = 'standard' | 'thorough'
 export type WhatIfValues = Record<string, number | string>
