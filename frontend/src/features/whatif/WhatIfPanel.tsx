@@ -4,6 +4,7 @@ import { CategorySelect } from './CategorySelect'
 import { ExplanationBars } from './ExplanationBars'
 import { NumericSlider } from './NumericSlider'
 import { PredictionDisplay } from './PredictionDisplay'
+import { outOfRangeInputs } from './rangeCheck'
 
 export function WhatIfPanel({
   model,
@@ -23,6 +24,7 @@ export function WhatIfPanel({
   updating: boolean
 }) {
   const spec = model.input_spec ?? []
+  const outOfRange = outOfRangeInputs(spec, values)
 
   return (
     <div className="card">
@@ -36,6 +38,13 @@ export function WhatIfPanel({
         targetColumn={model.target_column}
         updating={updating}
       />
+      {outOfRange.length > 0 && (
+        <div className="range-note" role="note">
+          Exploring beyond your data: <strong>{outOfRange.join(', ')}</strong>{' '}
+          {outOfRange.length > 1 ? 'are' : 'is'} outside the range the model was trained
+          on. The model can't extrapolate out here, so treat this prediction with caution.
+        </div>
+      )}
       {prediction?.explanation && (
         <ExplanationBars
           explanation={prediction.explanation}

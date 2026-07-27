@@ -21,12 +21,16 @@ export function NumericSlider({
   const max = baseMax + pad
   const step = (max - min) / SLIDER_STEPS || 1
 
+  const outOfRange = value < baseMin || value > baseMax
+
   return (
     <div className="whatif-control">
       <div className="control-header">
         <label htmlFor={`slider-${item.name}`}>{item.name}</label>
         <input
           type="number"
+          className={outOfRange ? 'out-of-range' : undefined}
+          title={outOfRange ? 'Outside the range the model was trained on' : undefined}
           aria-label={`${item.name} exact value`}
           value={Number.isFinite(value) ? Number(value.toFixed(4)) : ''}
           onChange={(event) => {

@@ -50,26 +50,48 @@ function regressionCards(metrics: Record<string, unknown>): MetricCard[] {
   return cards
 }
 
+function baselineContext(meta: ModelMeta): string | null {
+  const metrics = meta.metrics ?? {}
+  if (meta.task === 'classification') {
+    const naive = asNumber(metrics.baseline_accuracy)
+    if (naive === null) return null
+    const parts = [`always guessing the most common value gets ${formatPercent(naive)}`]
+    const linear = asNumber(metrics.linear_accuracy)
+    if (linear !== null) parts.push(`a basic statistical model gets ${formatPercent(linear)}`)
+    return `For context: ${parts.join(' · ')}.`
+  }
+  const naiveMae = asNumber(metrics.baseline_mae)
+  if (naiveMae === null) return null
+  const parts = [`always predicting the average is off by ${formatNumber(naiveMae)}`]
+  const linearMae = asNumber(metrics.linear_mae)
+  if (linearMae !== null) parts.push(`a basic statistical model is off by ${formatNumber(linearMae)}`)
+  return `For context: ${parts.join(' · ')}.`
+}
+
 export function MetricsCards({ meta }: { meta: ModelMeta }) {
   const metrics = meta.metrics ?? {}
   const cards =
     meta.task === 'classification' ? classificationCards(metrics) : regressionCards(metrics)
   const testRows = asNumber(metrics.test_rows)
+  const context = baselineContext(meta)
 
   return (
-    <div className="metric-cards">
-      {cards.map((card) => (
-        <div key={card.label} className="card metric-card">
-          <div className="value">{card.value}</div>
-          <div className="label">{card.label}</div>
-        </div>
-      ))}
-      {testRows !== null && (
-        <div className="card metric-card">
-          <div className="value">{testRows.toLocaleString()}</div>
-          <div className="label">rows held back to test the model fairly</div>
-        </div>
-      )}
+    <div>
+      <div className="metric-cards">
+        {cards.map((card) => (
+          <div key={card.label} className="card metric-card">
+            <div className="value">{card.value}</div>
+            <div className="label">{card.label}</div>
+          </div>
+        ))}
+        {testRows !== null && (
+          <div className="card metric-card">
+            <div className="value">{testRows.toLocaleString()}</div>
+            <div className="label">rows held back to test the model fairly</div>
+          </div>
+        )}
+      </div>
+      {context && <p className="muted small context-line">{context}</p>}
     </div>
   )
 }

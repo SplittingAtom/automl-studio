@@ -18,6 +18,7 @@ from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier, XGBRegressor
 
 from app.datasets.schemas import ProfileWarning
+from app.training.baseline import baseline_metrics
 from app.training.preprocessing import FeatureSpec, TrainingError, apply_feature_spec
 
 SEED = 42
@@ -99,8 +100,10 @@ def train_model(
         if is_classification
         else _regression_metrics(model, X_test, y_test)
     )
+    metrics.update(baseline_metrics(X_train, X_test, y_train, y_test, spec))
     importance = _importance(model, X.columns)
     _check_leakage(metrics, importance, warnings)
+    _check_simple_relationships(metrics, is_classification, warnings)
     return TrainingResult(
         metrics=metrics,
         importance=importance,
@@ -241,6 +244,38 @@ def _check_leakage(
             ),
         )
     )
+
+
+SIMPLE_CLASSIFICATION_GAP = 0.02
+SIMPLE_REGRESSION_GAP = 0.03
+
+
+def _check_simple_relationships(
+    metrics: dict[str, Any], is_classification: bool, warnings: list[ProfileWarning]
+) -> None:
+    """If a linear model nearly matches XGBoost, the patterns are mostly simple."""
+    if is_classification:
+        linear, main = metrics.get("linear_accuracy"), metrics.get("accuracy")
+        close = linear is not None and linear >= main - SIMPLE_CLASSIFICATION_GAP
+        extra = ""
+    else:
+        linear, main = metrics.get("linear_r2"), metrics.get("r2")
+        close = linear is not None and linear >= main - SIMPLE_REGRESSION_GAP
+        extra = (
+            " For what-if values outside the range of your data, simple trends like "
+            "this are often more trustworthy than the model's flat extrapolation."
+        )
+    if close:
+        warnings.append(
+            ProfileWarning(
+                code="SIMPLE_RELATIONSHIPS",
+                message=(
+                    "A basic statistical model does nearly as well as the advanced one — "
+                    "the patterns in your data are mostly simple. That's fine; it just "
+                    "means the extra complexity isn't adding much." + extra
+                ),
+            )
+        )
 
 
 def _importance(model, feature_names) -> tuple[ImportanceItem, ...]:

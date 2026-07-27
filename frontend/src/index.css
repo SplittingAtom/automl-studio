@@ -395,6 +395,24 @@ h3 { font-size: 0.95rem; }
 .proba-row .proba-label { width: 90px; overflow: hidden; text-overflow: ellipsis; }
 .proba-row .proba-value { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
 
+.context-line { margin: 0.25rem 0 1rem; }
+
+.range-note {
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  color: var(--warning-text);
+  border-radius: 8px;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.83rem;
+  margin-bottom: 1rem;
+}
+
+.whatif-control input[type='number'].out-of-range {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
 /* Per-prediction explanation bars */
 .explanation { margin-bottom: 1.25rem; }
 .explanation-row {
