@@ -29,8 +29,11 @@ class TestTraining:
         assert data["metrics"]["accuracy"] > 0.6
         assert len(data["importance"]) > 0
         assert len(data["input_spec"]) > 0
-        excluded = {e["name"] for e in data["excluded_columns"]}
-        assert "deck" in excluded  # 77% missing on Titanic
+        # Trimmed Titanic sample has 7 clean features, none excluded
+        assert data["excluded_columns"] == []
+        assert {i["name"] for i in data["input_spec"]} == {
+            "pclass", "sex", "age", "sibsp", "parch", "fare", "embarked",
+        }
 
     def test_input_spec_drives_ui_controls(self, client, trained_model_id):
         spec = client.get(f"/api/models/{trained_model_id}").json()["data"]["input_spec"]
