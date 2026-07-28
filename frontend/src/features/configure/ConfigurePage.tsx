@@ -35,6 +35,7 @@ export function ConfigurePage() {
   const [taskOverride, setTaskOverride] = useState<Task | null>(null)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [thorough, setThorough] = useState(false)
+  const [timeColumn, setTimeColumn] = useState<string>('')
 
   if (dataset.isLoading) return <p className="muted">Loading dataset…</p>
   if (dataset.error || !dataset.data) return <ErrorBanner error={dataset.error} />
@@ -44,6 +45,7 @@ export function ConfigurePage() {
   const detectedTask = targetColumn ? detectTask(targetColumn.kind) : null
   const task = taskOverride ?? detectedTask
   const previousModels = (models.data ?? []).length
+  const dateColumns = meta.columns.filter((c) => c.kind === 'datetime')
   const recommended = new Set(
     (analysis.data?.candidates ?? []).filter((c) => c.recommended).map((c) => c.column),
   )
@@ -68,6 +70,7 @@ export function ConfigurePage() {
         task,
         excluded_columns: [...excluded].filter((name) => name !== target),
         effort: thorough ? 'thorough' : 'standard',
+        time_column: timeColumn || null,
       },
       { onSuccess: (model) => navigate(`/models/${model.id}`) },
     )
@@ -158,6 +161,31 @@ export function ConfigurePage() {
                 <p className="muted small">
                   Leaving out: {[...excluded].filter((n) => n !== target).join(', ')}
                 </p>
+              )}
+              {dateColumns.length > 0 && (
+                <div className="time-mode-row">
+                  <label htmlFor="time-column" className="small" style={{ fontWeight: 600 }}>
+                    Time-ordered data?
+                  </label>
+                  <select
+                    id="time-column"
+                    value={timeColumn}
+                    onChange={(event) => setTimeColumn(event.target.value)}
+                  >
+                    <option value="">No — rows are independent</option>
+                    {dateColumns.map((column) => (
+                      <option key={column.name} value={column.name}>
+                        Order by {column.name}
+                      </option>
+                    ))}
+                  </select>
+                  {timeColumn && (
+                    <p className="muted small" style={{ margin: '0.25rem 0 0' }}>
+                      Tests on the most recent rows and adds recent-history columns —
+                      honest evaluation for forecasting-style data.
+                    </p>
+                  )}
+                </div>
               )}
               <label className="effort-toggle">
                 <input

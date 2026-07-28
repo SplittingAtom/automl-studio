@@ -25,6 +25,7 @@ class TrainRequest(Frozen):
     task: Task | None = None
     excluded_columns: tuple[str, ...] = ()
     effort: Effort = "standard"
+    time_column: str | None = None
 
     @field_validator("dataset_id", "target_column")
     @classmethod
@@ -53,6 +54,7 @@ class ModelMeta(Frozen):
     task: Task
     status: ModelStatus
     effort: Effort = "standard"
+    time_column: str | None = None
     created_at: str
     error: str | None = None
     metrics: dict[str, Any] | None = None

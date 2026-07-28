@@ -75,6 +75,7 @@ export const ModelMetaSchema = z.object({
   task: TaskSchema,
   status: ModelStatusSchema,
   effort: z.enum(['standard', 'thorough']),
+  time_column: z.string().nullable(),
   created_at: z.string(),
   error: z.string().nullable(),
   metrics: z.record(z.string(), z.unknown()).nullable(),

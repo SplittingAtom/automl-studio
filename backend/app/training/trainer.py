@@ -20,7 +20,12 @@ from sklearn.metrics import (
     roc_auc_score,
     root_mean_squared_error,
 )
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from sklearn.model_selection import (
+    KFold,
+    StratifiedKFold,
+    TimeSeriesSplit,
+    train_test_split,
+)
 from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier, XGBRegressor
 
@@ -81,6 +86,8 @@ def train_model(
     spec: FeatureSpec,
     max_rows: int = 100_000,
     effort: Literal["standard", "thorough"] = "standard",
+    time_mode: bool = False,
+    generated_columns: tuple[str, ...] = (),
 ) -> TrainingResult:
     warnings: list[ProfileWarning] = []
     data, n_dropped = _drop_missing_target(df, spec, warnings)
@@ -90,13 +97,33 @@ def train_model(
             f"Only {len(data)} usable rows — at least {MIN_TRAINING_ROWS} are needed to train a model.",
         )
     if len(data) > max_rows:
-        data = data.sample(max_rows, random_state=SEED)
+        if time_mode:
+            data = data.tail(max_rows)
+            message = f"Trained on the most recent {max_rows:,} rows for speed."
+        else:
+            data = data.sample(max_rows, random_state=SEED)
+            message = f"Trained on a random sample of {max_rows:,} rows for speed."
+        warnings.append(ProfileWarning(code="ROW_SAMPLE", message=message))
+    if time_mode:
         warnings.append(
             ProfileWarning(
-                code="ROW_SAMPLE",
-                message=f"Trained on a random sample of {max_rows:,} rows for speed.",
+                code="TIME_SPLIT",
+                message=(
+                    "Time-aware training: the model was tested on the most recent "
+                    f"{TEST_FRACTION:.0%} of rows — it never saw the future while learning."
+                ),
             )
         )
+        if generated_columns:
+            warnings.append(
+                ProfileWarning(
+                    code="LAG_FEATURES",
+                    message=(
+                        "Added recent-history columns based on past values of the target: "
+                        f"{', '.join(generated_columns)}."
+                    ),
+                )
+            )
 
     X = apply_feature_spec(data, spec)
     if not spec.features:
@@ -106,10 +133,15 @@ def train_model(
     is_classification = spec.target.task == "classification"
     y = _encode_target(data, spec, warnings)
 
-    stratify = y if is_classification and y.value_counts().min() >= 2 else None
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_FRACTION, random_state=SEED, stratify=stratify
-    )
+    if time_mode:
+        cut = int(len(X) * (1 - TEST_FRACTION))
+        X_train, X_test = X.iloc[:cut], X.iloc[cut:]
+        y_train, y_test = y.iloc[:cut], y.iloc[cut:]
+    else:
+        stratify = y if is_classification and y.value_counts().min() >= 2 else None
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=TEST_FRACTION, random_state=SEED, stratify=stratify
+        )
     balance = (
         is_classification
         and y.value_counts(normalize=True).min() < IMBALANCE_WARNING_FRACTION
@@ -117,15 +149,21 @@ def train_model(
     params = dict(XGB_PARAMS)
     tuning_trials = 0
     if effort == "thorough" and len(X_train) >= EARLY_STOPPING_MIN_ROWS:
-        params, tuning_trials = _tuned_params(X_train, y_train, is_classification, balance)
-    model, best_iteration = _fit(X_train, y_train, is_classification, balance, params)
+        params, tuning_trials = _tuned_params(
+            X_train, y_train, is_classification, balance, time_mode
+        )
+    model, best_iteration = _fit(
+        X_train, y_train, is_classification, balance, params, time_mode
+    )
     metrics = (
         _classification_metrics(model, X_test, y_test, spec)
         if is_classification
         else _regression_metrics(model, X_test, y_test)
     )
     metrics.update(baseline_metrics(X_train, X_test, y_train, y_test, spec))
-    metrics.update(_cross_validate(X, y, is_classification, best_iteration, params))
+    metrics.update(
+        _cross_validate(X, y, is_classification, best_iteration, params, time_mode)
+    )
     if tuning_trials:
         metrics["tuning_trials"] = tuning_trials
     importance = _importance(model, X.columns)
@@ -186,7 +224,18 @@ def _encode_target(data, spec, warnings) -> pd.Series:
     return y
 
 
-def _fit(X_train, y_train, is_classification, balance=False, params=None):
+def _train_val_split(X_train, y_train, is_classification, time_mode):
+    """Validation slice for early stopping — the most recent rows in time mode."""
+    if time_mode:
+        cut = int(len(X_train) * (1 - VALIDATION_FRACTION))
+        return X_train.iloc[:cut], X_train.iloc[cut:], y_train.iloc[:cut], y_train.iloc[cut:]
+    stratify = y_train if is_classification and y_train.value_counts().min() >= 2 else None
+    return train_test_split(
+        X_train, y_train, test_size=VALIDATION_FRACTION, random_state=SEED, stratify=stratify
+    )
+
+
+def _fit(X_train, y_train, is_classification, balance=False, params=None, time_mode=False):
     params = params or XGB_PARAMS
     estimator_cls = XGBClassifier if is_classification else XGBRegressor
     use_early_stopping = len(X_train) >= EARLY_STOPPING_MIN_ROWS
@@ -195,9 +244,8 @@ def _fit(X_train, y_train, is_classification, balance=False, params=None):
         model.fit(X_train, y_train, sample_weight=_weights(y_train, balance), verbose=False)
         return model, None
 
-    stratify = y_train if is_classification and y_train.value_counts().min() >= 2 else None
-    X_fit, X_val, y_fit, y_val = train_test_split(
-        X_train, y_train, test_size=VALIDATION_FRACTION, random_state=SEED, stratify=stratify
+    X_fit, X_val, y_fit, y_val = _train_val_split(
+        X_train, y_train, is_classification, time_mode
     )
     model = estimator_cls(**params, early_stopping_rounds=25)
     model.fit(
@@ -210,16 +258,18 @@ def _fit(X_train, y_train, is_classification, balance=False, params=None):
     return model, int(model.best_iteration)
 
 
-def _tuned_params(X_train, y_train, is_classification, balance):
+def _tuned_params(X_train, y_train, is_classification, balance, time_mode=False):
     """Small random search; scores each trial on an early-stopping val split."""
     rng = np.random.default_rng(SEED)
-    stratify = y_train if is_classification and y_train.value_counts().min() >= 2 else None
-    X_fit, X_val, y_fit, y_val = train_test_split(
-        X_train, y_train, test_size=VALIDATION_FRACTION, random_state=SEED, stratify=stratify
+    X_fit, X_val, y_fit, y_val = _train_val_split(
+        X_train, y_train, is_classification, time_mode
     )
     if len(X_fit) > TUNING_MAX_ROWS:
-        sampled = X_fit.sample(TUNING_MAX_ROWS, random_state=SEED)
-        X_fit, y_fit = sampled, y_fit.loc[sampled.index]
+        if time_mode:
+            X_fit, y_fit = X_fit.tail(TUNING_MAX_ROWS), y_fit.tail(TUNING_MAX_ROWS)
+        else:
+            sampled = X_fit.sample(TUNING_MAX_ROWS, random_state=SEED)
+            X_fit, y_fit = sampled, y_fit.loc[sampled.index]
     estimator_cls = XGBClassifier if is_classification else XGBRegressor
     best_params, best_score = dict(XGB_PARAMS), None
     for _ in range(TUNING_TRIALS):
@@ -245,20 +295,32 @@ def _tuned_params(X_train, y_train, is_classification, balance):
     return best_params, TUNING_TRIALS
 
 
-def _cross_validate(X, y, is_classification, best_iteration, params) -> dict[str, Any]:
-    """K-fold spread of the headline metric — how stable is this model?"""
+def _cross_validate(
+    X, y, is_classification, best_iteration, params, time_mode=False
+) -> dict[str, Any]:
+    """K-fold spread of the headline metric — how stable is this model?
+
+    Time mode uses walk-forward (expanding-window) folds: every fold trains
+    on the past and scores on the block that follows it.
+    """
     try:
         if len(X) > CV_MAX_ROWS:
-            X = X.sample(CV_MAX_ROWS, random_state=SEED)
-            y = y.loc[X.index]
+            if time_mode:
+                X, y = X.tail(CV_MAX_ROWS), y.tail(CV_MAX_ROWS)
+            else:
+                X = X.sample(CV_MAX_ROWS, random_state=SEED)
+                y = y.loc[X.index]
         n_estimators = min(int(best_iteration) + 1 if best_iteration else 300, 300)
         cv_params = {**params, "n_estimators": n_estimators}
-        use_stratified = is_classification and y.value_counts().min() >= CV_FOLDS
-        splitter = (
-            StratifiedKFold(CV_FOLDS, shuffle=True, random_state=SEED)
-            if use_stratified
-            else KFold(CV_FOLDS, shuffle=True, random_state=SEED)
+        use_stratified = (
+            not time_mode and is_classification and y.value_counts().min() >= CV_FOLDS
         )
+        if time_mode:
+            splitter = TimeSeriesSplit(n_splits=CV_FOLDS)
+        elif use_stratified:
+            splitter = StratifiedKFold(CV_FOLDS, shuffle=True, random_state=SEED)
+        else:
+            splitter = KFold(CV_FOLDS, shuffle=True, random_state=SEED)
         estimator_cls = XGBClassifier if is_classification else XGBRegressor
         scores = []
         for train_idx, test_idx in splitter.split(X, y if use_stratified else None):

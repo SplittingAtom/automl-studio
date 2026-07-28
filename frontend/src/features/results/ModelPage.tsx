@@ -42,6 +42,7 @@ export function ModelPage() {
           </h1>
           <p className="muted">
             {taskLabel(meta.task)} · trained on {meta.n_rows_used?.toLocaleString()} rows
+            {meta.time_column && ` · time-aware, ordered by ${meta.time_column}`}
           </p>
         </div>
         <div className="title-actions">

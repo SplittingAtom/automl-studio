@@ -11,6 +11,7 @@ from app.training.preprocessing import FeatureSpec, TrainingError, build_feature
 from app.training.repository import ModelRepository
 from app.training.schemas import InputSpecItem, ModelMeta, TrainRequest
 from app.training.task_detection import detect_task
+from app.training.time_series import prepare_time_frame
 from app.training.trainer import ImportanceItem, train_model
 
 LOW_IMPORTANCE_SHARE = 0.01
@@ -49,6 +50,7 @@ def create_training_job(
             status_code=422,
         )
     _validate_exclusions(request, dataset)
+    _validate_time_column(request, dataset)
     task = request.task or detect_task(dataset_repo.load_dataframe(dataset.id)[column.name])
     meta = ModelMeta(
         id=f"mdl_{uuid.uuid4().hex[:10]}",
@@ -58,10 +60,29 @@ def create_training_job(
         task=task,
         status="queued",
         effort=request.effort,
+        time_column=request.time_column,
         created_at=datetime.now(UTC).isoformat(),
         user_excluded_columns=request.excluded_columns,
     )
     return model_repo.save_meta(meta)
+
+
+def _validate_time_column(request: TrainRequest, dataset) -> None:
+    if request.time_column is None:
+        return
+    column = next((c for c in dataset.columns if c.name == request.time_column), None)
+    if column is None or column.kind != "datetime":
+        raise AppError(
+            "INVALID_TIME_COLUMN",
+            f'"{request.time_column}" isn\'t a date column, so it can\'t order the rows in time.',
+            status_code=422,
+        )
+    if request.time_column == request.target_column:
+        raise AppError(
+            "INVALID_TIME_COLUMN",
+            "The time column can't also be the column you're predicting.",
+            status_code=422,
+        )
 
 
 def _validate_exclusions(request: TrainRequest, dataset) -> None:
@@ -94,6 +115,11 @@ def run_training_job(
     model_repo.save_meta(meta.model_copy(update={"status": "training"}))
     try:
         df = dataset_repo.load_dataframe(meta.dataset_id)
+        dataset_columns = {str(c) for c in df.columns}
+        generated_columns: tuple[str, ...] = ()
+        if meta.time_column is not None:
+            df, generated, _ = prepare_time_frame(df, meta.time_column, meta.target_column)
+            generated_columns = tuple(generated)
         spec = build_feature_spec(
             df,
             meta.target_column,
@@ -102,7 +128,12 @@ def run_training_job(
             user_excluded=meta.user_excluded_columns,
         )
         result = train_model(
-            df, spec, max_rows=settings.max_training_rows, effort=meta.effort
+            df,
+            spec,
+            max_rows=settings.max_training_rows,
+            effort=meta.effort,
+            time_mode=meta.time_column is not None,
+            generated_columns=generated_columns,
         )
         model_repo.save_artifact(model_id, result.model, spec, result.interval_model)
         if result.validation is not None:
@@ -115,8 +146,10 @@ def run_training_job(
                     "importance": result.importance,
                     "input_spec": build_input_spec(spec),
                     "excluded_columns": spec.excluded,
-                    "suggested_exclusions": suggest_exclusions(spec, result.importance),
-                    "leak_suspect": _leak_suspect(spec, result.warnings),
+                    "suggested_exclusions": suggest_exclusions(
+                        spec, result.importance, dataset_columns
+                    ),
+                    "leak_suspect": _leak_suspect(spec, result.warnings, dataset_columns),
                     "warnings": result.warnings,
                     "n_rows_used": result.n_rows_used,
                 }
@@ -138,12 +171,16 @@ def run_training_job(
 
 
 def suggest_exclusions(
-    spec: FeatureSpec, importance: tuple[ImportanceItem, ...]
+    spec: FeatureSpec,
+    importance: tuple[ImportanceItem, ...],
+    dataset_columns: set[str] | None = None,
 ) -> tuple[str, ...]:
     """Dataset columns whose features all scored below the importance floor.
 
     Derived date features are grouped by their source column — the raw column
-    is only suggested when every part of it was useless.
+    is only suggested when every part of it was useless. Generated columns
+    (e.g. time-series lags) aren't dataset columns and are never suggested:
+    the retrain flow can only exclude real columns.
     """
     scores = {item.feature: item.score for item in importance}
     by_source: dict[str, list[float]] = {}
@@ -154,21 +191,25 @@ def suggest_exclusions(
         source
         for source, values in by_source.items()
         if max(values) < LOW_IMPORTANCE_SHARE
+        and (dataset_columns is None or source in dataset_columns)
     )
     if len(by_source) - len(suggested) < MIN_REMAINING_COLUMNS:
         return ()
     return suggested
 
 
-def _leak_suspect(spec: FeatureSpec, warnings) -> str | None:
+def _leak_suspect(
+    spec: FeatureSpec, warnings, dataset_columns: set[str] | None = None
+) -> str | None:
     """Map a POSSIBLE_LEAKAGE warning's feature back to its dataset column."""
     warning = next((w for w in warnings if w.code == "POSSIBLE_LEAKAGE"), None)
     if warning is None or warning.column is None:
         return None
     feature = next((f for f in spec.features if f.name == warning.column), None)
-    if feature is None:
-        return warning.column
-    return feature.derived_from or feature.name
+    source = (feature.derived_from or feature.name) if feature else warning.column
+    if dataset_columns is not None and source not in dataset_columns:
+        return None  # a generated column (e.g. a lag) can't be excluded
+    return source
 
 
 def build_input_spec(spec: FeatureSpec) -> tuple[InputSpecItem, ...]:

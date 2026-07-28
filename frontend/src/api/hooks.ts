@@ -59,6 +59,7 @@ export function useCreateModel() {
       task?: Task
       excluded_columns?: string[]
       effort?: Effort
+      time_column?: string | null
     }) => api.createModel(input),
   })
 }
