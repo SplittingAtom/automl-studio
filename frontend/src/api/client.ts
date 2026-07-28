@@ -104,6 +104,7 @@ export const api = {
     excluded_columns?: string[]
     effort?: Effort
     time_column?: string | null
+    horizon?: number
   }): Promise<ModelMeta> =>
     request(ModelMetaSchema, '/api/models', {
       method: 'POST',

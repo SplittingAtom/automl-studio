@@ -88,6 +88,7 @@ def train_model(
     effort: Literal["standard", "thorough"] = "standard",
     time_mode: bool = False,
     generated_columns: tuple[str, ...] = (),
+    horizon: int = 0,
 ) -> TrainingResult:
     warnings: list[ProfileWarning] = []
     data, n_dropped = _drop_missing_target(df, spec, warnings)
@@ -105,12 +106,19 @@ def train_model(
             message = f"Trained on a random sample of {max_rows:,} rows for speed."
         warnings.append(ProfileWarning(code="ROW_SAMPLE", message=message))
     if time_mode:
+        gap_note = (
+            f" A {horizon}-row gap was left between training and test rows so a "
+            f"{horizon}-step-ahead target can't overlap the test period."
+            if horizon
+            else ""
+        )
         warnings.append(
             ProfileWarning(
                 code="TIME_SPLIT",
                 message=(
                     "Time-aware training: the model was tested on the most recent "
                     f"{TEST_FRACTION:.0%} of rows — it never saw the future while learning."
+                    + gap_note
                 ),
             )
         )
@@ -134,9 +142,13 @@ def train_model(
     y = _encode_target(data, spec, warnings)
 
     if time_mode:
-        cut = int(len(X) * (1 - TEST_FRACTION))
-        X_train, X_test = X.iloc[:cut], X.iloc[cut:]
-        y_train, y_test = y.iloc[:cut], y.iloc[cut:]
+        X_train, X_test, y_train, y_test = _time_split(X, y, TEST_FRACTION, horizon)
+        if len(X_train) < MIN_TRAINING_ROWS // 2:
+            raise TrainingError(
+                "HORIZON_TOO_LARGE",
+                f"A prediction horizon of {horizon} rows leaves too little training "
+                "data. Use a smaller horizon or more rows.",
+            )
     else:
         stratify = y if is_classification and y.value_counts().min() >= 2 else None
         X_train, X_test, y_train, y_test = train_test_split(
@@ -150,10 +162,10 @@ def train_model(
     tuning_trials = 0
     if effort == "thorough" and len(X_train) >= EARLY_STOPPING_MIN_ROWS:
         params, tuning_trials = _tuned_params(
-            X_train, y_train, is_classification, balance, time_mode
+            X_train, y_train, is_classification, balance, time_mode, horizon
         )
     model, best_iteration = _fit(
-        X_train, y_train, is_classification, balance, params, time_mode
+        X_train, y_train, is_classification, balance, params, time_mode, horizon
     )
     metrics = (
         _classification_metrics(model, X_test, y_test, spec)
@@ -162,7 +174,7 @@ def train_model(
     )
     metrics.update(baseline_metrics(X_train, X_test, y_train, y_test, spec))
     metrics.update(
-        _cross_validate(X, y, is_classification, best_iteration, params, time_mode)
+        _cross_validate(X, y, is_classification, best_iteration, params, time_mode, horizon)
     )
     if tuning_trials:
         metrics["tuning_trials"] = tuning_trials
@@ -224,18 +236,27 @@ def _encode_target(data, spec, warnings) -> pd.Series:
     return y
 
 
-def _train_val_split(X_train, y_train, is_classification, time_mode):
+def _time_split(X, y, test_fraction, gap):
+    """Chronological split with an embargo: purge `gap` rows before the test
+    block so multi-horizon targets in late training rows can't overlap it."""
+    cut = int(len(X) * (1 - test_fraction))
+    train_end = max(0, cut - gap)
+    return X.iloc[:train_end], X.iloc[cut:], y.iloc[:train_end], y.iloc[cut:]
+
+
+def _train_val_split(X_train, y_train, is_classification, time_mode, gap=0):
     """Validation slice for early stopping — the most recent rows in time mode."""
     if time_mode:
-        cut = int(len(X_train) * (1 - VALIDATION_FRACTION))
-        return X_train.iloc[:cut], X_train.iloc[cut:], y_train.iloc[:cut], y_train.iloc[cut:]
+        return _time_split(X_train, y_train, VALIDATION_FRACTION, gap)
     stratify = y_train if is_classification and y_train.value_counts().min() >= 2 else None
     return train_test_split(
         X_train, y_train, test_size=VALIDATION_FRACTION, random_state=SEED, stratify=stratify
     )
 
 
-def _fit(X_train, y_train, is_classification, balance=False, params=None, time_mode=False):
+def _fit(
+    X_train, y_train, is_classification, balance=False, params=None, time_mode=False, gap=0
+):
     params = params or XGB_PARAMS
     estimator_cls = XGBClassifier if is_classification else XGBRegressor
     use_early_stopping = len(X_train) >= EARLY_STOPPING_MIN_ROWS
@@ -245,7 +266,7 @@ def _fit(X_train, y_train, is_classification, balance=False, params=None, time_m
         return model, None
 
     X_fit, X_val, y_fit, y_val = _train_val_split(
-        X_train, y_train, is_classification, time_mode
+        X_train, y_train, is_classification, time_mode, gap
     )
     model = estimator_cls(**params, early_stopping_rounds=25)
     model.fit(
@@ -258,11 +279,11 @@ def _fit(X_train, y_train, is_classification, balance=False, params=None, time_m
     return model, int(model.best_iteration)
 
 
-def _tuned_params(X_train, y_train, is_classification, balance, time_mode=False):
+def _tuned_params(X_train, y_train, is_classification, balance, time_mode=False, gap=0):
     """Small random search; scores each trial on an early-stopping val split."""
     rng = np.random.default_rng(SEED)
     X_fit, X_val, y_fit, y_val = _train_val_split(
-        X_train, y_train, is_classification, time_mode
+        X_train, y_train, is_classification, time_mode, gap
     )
     if len(X_fit) > TUNING_MAX_ROWS:
         if time_mode:
@@ -296,7 +317,7 @@ def _tuned_params(X_train, y_train, is_classification, balance, time_mode=False)
 
 
 def _cross_validate(
-    X, y, is_classification, best_iteration, params, time_mode=False
+    X, y, is_classification, best_iteration, params, time_mode=False, gap=0
 ) -> dict[str, Any]:
     """K-fold spread of the headline metric — how stable is this model?
 
@@ -316,7 +337,7 @@ def _cross_validate(
             not time_mode and is_classification and y.value_counts().min() >= CV_FOLDS
         )
         if time_mode:
-            splitter = TimeSeriesSplit(n_splits=CV_FOLDS)
+            splitter = TimeSeriesSplit(n_splits=CV_FOLDS, gap=gap)
         elif use_stratified:
             splitter = StratifiedKFold(CV_FOLDS, shuffle=True, random_state=SEED)
         else:

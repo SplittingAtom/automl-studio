@@ -61,6 +61,7 @@ def create_training_job(
         status="queued",
         effort=request.effort,
         time_column=request.time_column,
+        horizon=request.horizon,
         created_at=datetime.now(UTC).isoformat(),
         user_excluded_columns=request.excluded_columns,
     )
@@ -69,6 +70,13 @@ def create_training_job(
 
 def _validate_time_column(request: TrainRequest, dataset) -> None:
     if request.time_column is None:
+        if request.horizon:
+            raise AppError(
+                "INVALID_HORIZON",
+                "A prediction horizon only makes sense with time-ordered data — "
+                "pick a time column first.",
+                status_code=422,
+            )
         return
     column = next((c for c in dataset.columns if c.name == request.time_column), None)
     if column is None or column.kind != "datetime":
@@ -134,6 +142,7 @@ def run_training_job(
             effort=meta.effort,
             time_mode=meta.time_column is not None,
             generated_columns=generated_columns,
+            horizon=meta.horizon,
         )
         model_repo.save_artifact(model_id, result.model, spec, result.interval_model)
         if result.validation is not None:

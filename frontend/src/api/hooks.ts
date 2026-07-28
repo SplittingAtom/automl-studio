@@ -60,6 +60,7 @@ export function useCreateModel() {
       excluded_columns?: string[]
       effort?: Effort
       time_column?: string | null
+      horizon?: number
     }) => api.createModel(input),
   })
 }

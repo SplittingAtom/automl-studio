@@ -427,6 +427,19 @@ h3 { font-size: 0.95rem; }
 .cross { color: var(--danger); font-weight: 700; }
 
 .time-mode-row { margin: 0.5rem 0 0.75rem; }
+.horizon-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.horizon-row input {
+  width: 80px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+}
 .time-mode-row select {
   width: 100%;
   border: 1px solid var(--border);

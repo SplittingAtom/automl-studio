@@ -36,6 +36,7 @@ export function ConfigurePage() {
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [thorough, setThorough] = useState(false)
   const [timeColumn, setTimeColumn] = useState<string>('')
+  const [horizon, setHorizon] = useState(0)
 
   if (dataset.isLoading) return <p className="muted">Loading dataset…</p>
   if (dataset.error || !dataset.data) return <ErrorBanner error={dataset.error} />
@@ -71,6 +72,7 @@ export function ConfigurePage() {
         excluded_columns: [...excluded].filter((name) => name !== target),
         effort: thorough ? 'thorough' : 'standard',
         time_column: timeColumn || null,
+        horizon: timeColumn ? horizon : 0,
       },
       { onSuccess: (model) => navigate(`/models/${model.id}`) },
     )
@@ -180,10 +182,33 @@ export function ConfigurePage() {
                     ))}
                   </select>
                   {timeColumn && (
-                    <p className="muted small" style={{ margin: '0.25rem 0 0' }}>
-                      Tests on the most recent rows and adds recent-history columns —
-                      honest evaluation for forecasting-style data.
-                    </p>
+                    <>
+                      <p className="muted small" style={{ margin: '0.25rem 0 0' }}>
+                        Tests on the most recent rows and adds recent-history columns —
+                        honest evaluation for forecasting-style data.
+                      </p>
+                      <div className="horizon-row">
+                        <label htmlFor="horizon" className="small" style={{ fontWeight: 600 }}>
+                          Prediction horizon
+                        </label>
+                        <input
+                          id="horizon"
+                          type="number"
+                          min={0}
+                          max={10000}
+                          value={horizon}
+                          onChange={(event) =>
+                            setHorizon(Math.max(0, Math.floor(Number(event.target.value) || 0)))
+                          }
+                        />
+                        <span className="muted small">rows ahead</span>
+                      </div>
+                      <p className="muted small" style={{ margin: '0.25rem 0 0' }}>
+                        If your target looks N rows into the future (e.g. a 10-day
+                        return), set N — a gap that size is left before the test rows so
+                        nothing overlaps. Leave 0 for next-row prediction.
+                      </p>
+                    </>
                   )}
                 </div>
               )}

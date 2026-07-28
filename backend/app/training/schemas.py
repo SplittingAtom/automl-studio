@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.datasets.schemas import ProfileWarning
 from app.training.preprocessing import ExcludedColumn
@@ -26,6 +26,7 @@ class TrainRequest(Frozen):
     excluded_columns: tuple[str, ...] = ()
     effort: Effort = "standard"
     time_column: str | None = None
+    horizon: int = Field(default=0, ge=0, le=10_000)
 
     @field_validator("dataset_id", "target_column")
     @classmethod
@@ -55,6 +56,7 @@ class ModelMeta(Frozen):
     status: ModelStatus
     effort: Effort = "standard"
     time_column: str | None = None
+    horizon: int = 0
     created_at: str
     error: str | None = None
     metrics: dict[str, Any] | None = None
