@@ -72,10 +72,10 @@ export function useModels(datasetId: string) {
   })
 }
 
-export function useValidationRows(modelId: string, enabled: boolean) {
+export function useValidationRows(modelId: string, enabled: boolean, rows = 15) {
   return useQuery({
-    queryKey: ['models', modelId, 'validation'],
-    queryFn: () => api.getValidationRows(modelId),
+    queryKey: ['models', modelId, 'validation', rows],
+    queryFn: () => api.getValidationRows(modelId, rows),
     enabled,
     retry: false, // older models have no saved validation; don't hammer the 404
   })

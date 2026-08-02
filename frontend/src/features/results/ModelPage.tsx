@@ -1,16 +1,21 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { useModel } from '../../api/hooks'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { WarningBanner } from '../../components/WarningBanner'
 import { taskLabel } from '../../lib/formatters'
+import { ForecastView } from './ForecastView'
 import { ResultsDashboard } from './ResultsDashboard'
 import { RetrainSuggestions } from './RetrainSuggestions'
 import { TrainingProgress } from './TrainingProgress'
 
+type View = 'overview' | 'forecast'
+
 export function ModelPage() {
   const { id = '' } = useParams()
   const model = useModel(id)
+  const [view, setView] = useState<View>('overview')
 
   if (model.isLoading) return <p className="muted">Loading model…</p>
   if (model.error || !model.data) return <ErrorBanner error={model.error} />
@@ -32,6 +37,9 @@ export function ModelPage() {
       </div>
     )
   }
+
+  // The forecast chart needs a timeline and a numeric prediction
+  const hasForecastView = meta.time_column !== null && meta.task === 'regression'
 
   return (
     <div>
@@ -63,9 +71,37 @@ export function ModelPage() {
           </Link>
         </div>
       </div>
-      <WarningBanner warnings={meta.warnings} />
-      <RetrainSuggestions meta={meta} />
-      <ResultsDashboard meta={meta} />
+
+      {hasForecastView && (
+        <div className="tab-bar" role="tablist">
+          <button
+            role="tab"
+            aria-selected={view === 'overview'}
+            className={`tab${view === 'overview' ? ' active' : ''}`}
+            onClick={() => setView('overview')}
+          >
+            Overview
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === 'forecast'}
+            className={`tab${view === 'forecast' ? ' active' : ''}`}
+            onClick={() => setView('forecast')}
+          >
+            Time-series prediction
+          </button>
+        </div>
+      )}
+
+      {view === 'forecast' && hasForecastView ? (
+        <ForecastView meta={meta} />
+      ) : (
+        <>
+          <WarningBanner warnings={meta.warnings} />
+          <RetrainSuggestions meta={meta} />
+          <ResultsDashboard meta={meta} />
+        </>
+      )}
     </div>
   )
 }
