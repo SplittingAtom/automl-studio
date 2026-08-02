@@ -10,6 +10,7 @@ from app.api.deps import get_dataset_repo, get_model_cache, get_model_repo, get_
 from app.api.envelope import AppError, ok
 from app.config import Settings
 from app.datasets.repository import DatasetRepository
+from app.prediction.forecast import compute_forecast
 from app.prediction.model_cache import ModelCache
 from app.prediction.predictor import predict
 from app.prediction.schemas import PredictRequest, SensitivityRequest
@@ -121,6 +122,35 @@ def download_validation(model_id: str, model_repo: ModelRepoDep) -> FileResponse
     return FileResponse(
         path, media_type="text/csv", filename=f"validation_{model_id}.csv"
     )
+
+
+@router.get("/{model_id}/forecast")
+def forecast_model(
+    model_id: str,
+    model_repo: ModelRepoDep,
+    dataset_repo: DatasetRepoDep,
+    cache: CacheDep,
+    steps: Annotated[int, Query(ge=1, le=365)] = 30,
+) -> dict:
+    meta = _require_complete(model_repo, model_id)
+    if meta.time_column is None or meta.task != "regression":
+        raise AppError(
+            "NOT_A_TIME_MODEL",
+            "Future forecasting needs a time-aware model predicting a number — "
+            "train with a time column selected.",
+            status_code=422,
+        )
+    artifact = cache.get(model_id, lambda: model_repo.load_artifact(model_id))
+    df = dataset_repo.load_dataframe(meta.dataset_id)
+    response = compute_forecast(
+        artifact["model"],
+        artifact["interval_model"],
+        artifact["spec"],
+        df,
+        meta.time_column,
+        steps,
+    )
+    return ok(response.model_dump())
 
 
 @router.get("/{model_id}/export")

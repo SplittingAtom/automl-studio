@@ -14,6 +14,8 @@ import {
   type ModelMeta,
   type PredictResponse,
   type Effort,
+  type ForecastResponse,
+  ForecastResponseSchema,
   type SensitivityResponse,
   type Task,
   type ValidationRows,
@@ -120,6 +122,9 @@ export const api = {
 
   getValidationRows: (modelId: string, rows = 15): Promise<ValidationRows> =>
     request(ValidationRowsSchema, `/api/models/${modelId}/validation?rows=${rows}`),
+
+  getForecast: (modelId: string, steps: number): Promise<ForecastResponse> =>
+    request(ForecastResponseSchema, `/api/models/${modelId}/forecast?steps=${steps}`),
 
   predict: (modelId: string, inputs: WhatIfValues): Promise<PredictResponse> =>
     request(PredictResponseSchema, `/api/models/${modelId}/predict`, {

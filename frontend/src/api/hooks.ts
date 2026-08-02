@@ -108,6 +108,17 @@ export function usePrediction(modelId: string, inputs: WhatIfValues, enabled: bo
   })
 }
 
+/** Recursive future forecast for time-aware regression models. */
+export function useForecast(modelId: string, steps: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['models', modelId, 'forecast', steps],
+    queryFn: () => api.getForecast(modelId, steps),
+    enabled: enabled && steps > 0,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  })
+}
+
 /** Sensitivity curve for one feature under the current what-if scenario. */
 export function useSensitivity(
   modelId: string,

@@ -112,6 +112,18 @@ export const ValidationRowsSchema = z.object({
   total_rows: z.number(),
 })
 
+export const ForecastResponseSchema = z.object({
+  points: z.array(
+    z.object({
+      date: z.string(),
+      predicted: z.number(),
+      low: z.number().nullable(),
+      high: z.number().nullable(),
+    }),
+  ),
+  last_actual_date: z.string(),
+})
+
 export const ThresholdPointSchema = z.object({
   threshold: z.number(),
   precision: z.number().nullable(),
@@ -168,6 +180,7 @@ export type TargetCandidate = z.infer<typeof TargetCandidateSchema>
 export type DatasetAnalysis = z.infer<typeof DatasetAnalysisSchema>
 export type SensitivityResponse = z.infer<typeof SensitivityResponseSchema>
 export type ValidationRows = z.infer<typeof ValidationRowsSchema>
+export type ForecastResponse = z.infer<typeof ForecastResponseSchema>
 export type ThresholdPoint = z.infer<typeof ThresholdPointSchema>
 export type Effort = 'standard' | 'thorough'
 export type WhatIfValues = Record<string, number | string>

@@ -50,6 +50,18 @@ class PredictResponse(Frozen):
     elapsed_ms: float
 
 
+class ForecastPoint(Frozen):
+    date: str
+    predicted: float
+    low: float | None = None
+    high: float | None = None
+
+
+class ForecastResponse(Frozen):
+    points: tuple[ForecastPoint, ...]
+    last_actual_date: str
+
+
 class SensitivityRequest(Frozen):
     feature: str
     inputs: dict = {}
