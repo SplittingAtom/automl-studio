@@ -1,5 +1,7 @@
 # AutoML Studio
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 PowerBI-style ease of use for machine learning. Upload a tabular CSV (or pick a
 bundled sample), choose the column you want to predict, and the app trains an
 XGBoost model automatically — then lets you explore it through live what-if
@@ -83,3 +85,7 @@ train time and applied identically to training data and what-if predictions,
 so train and predict can never disagree. Expensive derived views (profiling,
 insights, reports) are computed once per immutable dataset/model and cached to
 disk as JSON. See `CLAUDE.md` for the full architecture notes.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
