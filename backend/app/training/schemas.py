@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.datasets.schemas import ProfileWarning
 from app.training.preprocessing import ExcludedColumn
 from app.training.task_detection import Task
-from app.training.trainer import ImportanceItem
+from app.training.trainer import ImportanceItem, TuningOverrides
 
 ModelStatus = Literal["queued", "training", "complete", "failed"]
 
@@ -27,6 +27,9 @@ class TrainRequest(Frozen):
     effort: Effort = "standard"
     time_column: str | None = None
     horizon: int = Field(default=0, ge=0, le=10_000)
+    overrides: TuningOverrides | None = None
+    baseline_model_id: str | None = None
+    label: str | None = Field(default=None, max_length=80)
 
     @field_validator("dataset_id", "target_column")
     @classmethod
@@ -68,3 +71,6 @@ class ModelMeta(Frozen):
     leak_suspect: str | None = None
     warnings: tuple[ProfileWarning, ...] = ()
     n_rows_used: int | None = None
+    overrides: TuningOverrides | None = None
+    baseline_model_id: str | None = None
+    label: str | None = None

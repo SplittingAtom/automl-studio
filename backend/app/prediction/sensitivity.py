@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from app.api.envelope import AppError
+from app.prediction.labels import prediction_output_label
 from app.prediction.predictor import validated_row
 from app.prediction.schemas import SensitivityPoint, SensitivityResponse
 from app.training.preprocessing import FeatureColumn, FeatureSpec, apply_feature_spec
@@ -58,7 +59,7 @@ def _grid(feature: FeatureColumn) -> list:
 
 def _outputs(model, spec: FeatureSpec, X: pd.DataFrame):
     if spec.target.task == "regression":
-        return model.predict(X), f"Predicted {spec.target.name}"
+        return model.predict(X), prediction_output_label(spec)
     probabilities = model.predict_proba(X)
     classes = spec.target.classes or ()
     if len(classes) == 2:
@@ -66,5 +67,5 @@ def _outputs(model, spec: FeatureSpec, X: pd.DataFrame):
     else:
         # Track the class the model currently favors (averaged over the grid)
         class_index = int(np.argmax(probabilities.mean(axis=0)))
-    label = classes[class_index] if classes else "?"
-    return probabilities[:, class_index], f'Chance of "{label}"'
+    label = prediction_output_label(spec, class_index) if classes else 'Chance of "?"'
+    return probabilities[:, class_index], label

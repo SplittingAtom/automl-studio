@@ -51,6 +51,7 @@ def create_training_job(
         )
     _validate_exclusions(request, dataset)
     _validate_time_column(request, dataset)
+    _validate_monotone_constraints(request, dataset)
     task = request.task or detect_task(dataset_repo.load_dataframe(dataset.id)[column.name])
     meta = ModelMeta(
         id=f"mdl_{uuid.uuid4().hex[:10]}",
@@ -64,8 +65,24 @@ def create_training_job(
         horizon=request.horizon,
         created_at=datetime.now(UTC).isoformat(),
         user_excluded_columns=request.excluded_columns,
+        overrides=request.overrides,
+        baseline_model_id=request.baseline_model_id,
+        label=request.label.strip() if request.label else None,
     )
     return model_repo.save_meta(meta)
+
+
+def _validate_monotone_constraints(request: TrainRequest, dataset) -> None:
+    if request.overrides is None or not request.overrides.monotone_constraints:
+        return
+    numeric = {c.name for c in dataset.columns if c.kind == "numeric"}
+    bad = set(request.overrides.monotone_constraints) - numeric
+    if bad:
+        raise AppError(
+            "INVALID_MONOTONE_COLUMN",
+            f"Direction rules only work on number columns — not: {', '.join(sorted(bad))}.",
+            status_code=422,
+        )
 
 
 def _validate_time_column(request: TrainRequest, dataset) -> None:
@@ -143,10 +160,14 @@ def run_training_job(
             time_mode=meta.time_column is not None,
             generated_columns=generated_columns,
             horizon=meta.horizon,
+            overrides=meta.overrides,
         )
         model_repo.save_artifact(model_id, result.model, spec, result.interval_model)
         if result.validation is not None:
-            model_repo.save_validation(model_id, result.validation)
+            text_columns = tuple(
+                f.name for f in spec.features if f.kind == "categorical"
+            )
+            model_repo.save_validation(model_id, result.validation, text_columns)
         model_repo.save_meta(
             meta.model_copy(
                 update={

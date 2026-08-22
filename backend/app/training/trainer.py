@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sklearn.metrics import (
     accuracy_score,
     confusion_matrix,
@@ -69,6 +69,32 @@ class ImportanceItem(BaseModel):
     score: float
 
 
+class TuningOverrides(BaseModel):
+    """Expert knobs for fine-tuning from a baseline. None = keep the default.
+
+    Ranges are the safety rails: the same bounds drive the UI sliders, so a
+    hand-crafted request can't ask for anything the sliders couldn't.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    max_depth: int | None = Field(None, ge=2, le=12)
+    learning_rate: float | None = Field(None, ge=0.005, le=0.5)
+    n_estimators: int | None = Field(None, ge=50, le=2000)
+    subsample: float | None = Field(None, ge=0.5, le=1.0)
+    colsample_bytree: float | None = Field(None, ge=0.3, le=1.0)
+    min_child_weight: int | None = Field(None, ge=1, le=32)
+    reg_alpha: float | None = Field(None, ge=0.0, le=10.0)
+    reg_lambda: float | None = Field(None, ge=0.0, le=10.0)
+    # feature name -> 1 (prediction may only rise with it) or -1 (only fall)
+    monotone_constraints: dict[str, Literal[-1, 1]] = Field(default_factory=dict)
+
+    def xgb_params(self) -> dict[str, Any]:
+        """The explicitly-set scalar knobs, keyed by their XGBoost names."""
+        scalar_fields = self.model_dump(exclude={"monotone_constraints"})
+        return {key: value for key, value in scalar_fields.items() if value is not None}
+
+
 class TrainingResult(BaseModel):
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
     metrics: dict[str, Any]
@@ -89,6 +115,7 @@ def train_model(
     time_mode: bool = False,
     generated_columns: tuple[str, ...] = (),
     horizon: int = 0,
+    overrides: TuningOverrides | None = None,
 ) -> TrainingResult:
     warnings: list[ProfileWarning] = []
     data, n_dropped = _drop_missing_target(df, spec, warnings)
@@ -158,11 +185,12 @@ def train_model(
         is_classification
         and y.value_counts(normalize=True).min() < IMBALANCE_WARNING_FRACTION
     )
-    params = dict(XGB_PARAMS)
+    pinned = _pinned_params(overrides, X.columns)
+    params = {**XGB_PARAMS, **pinned}
     tuning_trials = 0
     if effort == "thorough" and len(X_train) >= EARLY_STOPPING_MIN_ROWS:
         params, tuning_trials = _tuned_params(
-            X_train, y_train, is_classification, balance, time_mode, horizon
+            X_train, y_train, is_classification, balance, time_mode, horizon, pinned
         )
     model, best_iteration = _fit(
         X_train, y_train, is_classification, balance, params, time_mode, horizon
@@ -236,6 +264,19 @@ def _encode_target(data, spec, warnings) -> pd.Series:
     return y
 
 
+def _pinned_params(overrides: TuningOverrides | None, feature_order) -> dict[str, Any]:
+    """User overrides as XGBoost params; pinned even during thorough search."""
+    if overrides is None:
+        return {}
+    pinned = overrides.xgb_params()
+    if overrides.monotone_constraints:
+        # XGBoost wants one direction per feature, in column order; 0 = free.
+        pinned["monotone_constraints"] = tuple(
+            overrides.monotone_constraints.get(str(name), 0) for name in feature_order
+        )
+    return pinned
+
+
 def _time_split(X, y, test_fraction, gap):
     """Chronological split with an embargo: purge `gap` rows before the test
     block so multi-horizon targets in late training rows can't overlap it."""
@@ -279,8 +320,15 @@ def _fit(
     return model, int(model.best_iteration)
 
 
-def _tuned_params(X_train, y_train, is_classification, balance, time_mode=False, gap=0):
-    """Small random search; scores each trial on an early-stopping val split."""
+def _tuned_params(
+    X_train, y_train, is_classification, balance, time_mode=False, gap=0, pinned=None
+):
+    """Small random search; scores each trial on an early-stopping val split.
+
+    User-pinned overrides win over the search in every trial, so "thorough"
+    explores only the knobs the user left free.
+    """
+    pinned = pinned or {}
     rng = np.random.default_rng(SEED)
     X_fit, X_val, y_fit, y_val = _train_val_split(
         X_train, y_train, is_classification, time_mode, gap
@@ -292,7 +340,7 @@ def _tuned_params(X_train, y_train, is_classification, balance, time_mode=False,
             sampled = X_fit.sample(TUNING_MAX_ROWS, random_state=SEED)
             X_fit, y_fit = sampled, y_fit.loc[sampled.index]
     estimator_cls = XGBClassifier if is_classification else XGBRegressor
-    best_params, best_score = dict(XGB_PARAMS), None
+    best_params, best_score = {**XGB_PARAMS, **pinned}, None
     for _ in range(TUNING_TRIALS):
         trial = {
             **XGB_PARAMS,
@@ -301,6 +349,7 @@ def _tuned_params(X_train, y_train, is_classification, balance, time_mode=False,
             "subsample": round(float(rng.uniform(0.6, 1.0)), 3),
             "colsample_bytree": round(float(rng.uniform(0.6, 1.0)), 3),
             "min_child_weight": int(rng.choice([1, 2, 4, 8])),
+            **pinned,
         }
         model = estimator_cls(**trial, early_stopping_rounds=25)
         model.fit(
@@ -428,6 +477,7 @@ def _classification_metrics(model, X_test, y_test, spec) -> dict[str, Any]:
         probabilities = model.predict_proba(X_test)[:, 1]
         metrics["roc_auc"] = round(float(roc_auc_score(y_test, probabilities)), 4)
         metrics["threshold_curve"] = _threshold_curve(y_test.to_numpy(), probabilities)
+        metrics["calibration"] = _calibration(y_test.to_numpy(), probabilities)
     return metrics
 
 
@@ -450,6 +500,46 @@ def _threshold_curve(actual: np.ndarray, probability_positive: np.ndarray) -> li
             }
         )
     return points
+
+
+CALIBRATION_BINS = 10
+
+
+def _calibration(actual: np.ndarray, probability_positive: np.ndarray) -> dict:
+    """Reliability check: when the model says 70%, does it happen 70% of the time?
+
+    `error` is the expected calibration error (row-weighted |predicted − actual|);
+    `bias` keeps the sign, so positive means overconfident toward the positive
+    class and negative means underconfident.
+    """
+    edges = np.linspace(0.0, 1.0, CALIBRATION_BINS + 1)
+    bin_index = np.clip(np.digitize(probability_positive, edges) - 1, 0, CALIBRATION_BINS - 1)
+    points = []
+    weighted_abs = 0.0
+    weighted_signed = 0.0
+    total = len(actual)
+    for b in range(CALIBRATION_BINS):
+        mask = bin_index == b
+        count = int(mask.sum())
+        if count == 0:
+            continue
+        predicted_mean = float(probability_positive[mask].mean())
+        actual_rate = float((actual[mask] == 1).mean())
+        gap = predicted_mean - actual_rate
+        weighted_abs += abs(gap) * count / total
+        weighted_signed += gap * count / total
+        points.append(
+            {
+                "predicted": round(predicted_mean, 4),
+                "actual": round(actual_rate, 4),
+                "count": count,
+            }
+        )
+    return {
+        "points": points,
+        "error": round(weighted_abs, 4),
+        "bias": round(weighted_signed, 4),
+    }
 
 
 def _regression_metrics(model, X_test, y_test) -> dict[str, Any]:

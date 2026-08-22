@@ -4,6 +4,7 @@ import { useDataset, useModels } from '../../api/hooks'
 import type { ModelMeta } from '../../api/schemas'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { formatNumber, formatPercent, taskLabel } from '../../lib/formatters'
+import { bestModelId, rankModels, variantLabel } from './leaderboard'
 
 function keyMetric(model: ModelMeta): string {
   const metrics = model.metrics ?? {}
@@ -24,7 +25,11 @@ export function ModelsListPage() {
   if (models.isLoading) return <p className="muted">Loading models…</p>
   if (models.error) return <ErrorBanner error={models.error} />
 
-  const rows = models.data ?? []
+  const rows = rankModels(models.data ?? [])
+  const best = bestModelId(rows)
+  const inProgress = rows.filter(
+    (m) => m.status === 'queued' || m.status === 'training',
+  ).length
 
   return (
     <div>
@@ -33,6 +38,7 @@ export function ModelsListPage() {
           <h1>Models — {dataset.data?.name ?? id}</h1>
           <p className="muted">
             Compare runs side by side — for example with and without a column.
+            {inProgress > 0 && ` ${inProgress} still training…`}
           </p>
         </div>
         <div className="title-actions">
@@ -54,10 +60,11 @@ export function ModelsListPage() {
           <table className="data-table">
             <thead>
               <tr>
+                <th title="How the run was made: Standard defaults, Thorough search, Fine-tuned knobs, or an auto-compare variant.">Run</th>
                 <th>Created</th>
                 <th>Predicts</th>
                 <th>Type</th>
-                <th>Quality</th>
+                <th title="Headline score on rows the model never saw: % correct for category models, R² for number models. Only compare runs predicting the same column.">Quality</th>
                 <th>Columns used</th>
                 <th>Status</th>
                 <th aria-label="Open" />
@@ -66,6 +73,14 @@ export function ModelsListPage() {
             <tbody>
               {rows.map((model) => (
                 <tr key={model.id}>
+                  <td>
+                    {variantLabel(model)}
+                    {model.id === best && (
+                      <span className="chip chip-numeric" style={{ marginLeft: 6 }}>
+                        Best
+                      </span>
+                    )}
+                  </td>
                   <td>{new Date(model.created_at).toLocaleString()}</td>
                   <td>
                     <strong>{model.target_column}</strong>

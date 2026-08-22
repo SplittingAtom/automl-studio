@@ -1,11 +1,14 @@
 import { useMemo } from 'react'
 
 import { usePrediction } from '../../api/hooks'
+import { InfoTip } from '../../components/InfoTip'
 import type { ModelMeta } from '../../api/schemas'
 import { useDebouncedValue } from '../../lib/useDebouncedValue'
 import { SensitivityCard } from '../sensitivity/SensitivityCard'
 import { WhatIfPanel } from '../whatif/WhatIfPanel'
 import { useWhatIfState } from '../whatif/useWhatIfState'
+import { CalibrationCard } from './CalibrationCard'
+import { FeatureIdeasCard } from './FeatureIdeasCard'
 import { ImportanceChart } from './ImportanceChart'
 import { MetricsCards } from './MetricsCards'
 import { ThresholdCard } from './ThresholdCard'
@@ -27,8 +30,12 @@ export function ResultsDashboard({ meta }: { meta: ModelMeta }) {
       <div>
         <MetricsCards meta={meta} />
         <ThresholdCard meta={meta} />
+        <CalibrationCard meta={meta} />
         <div className="card">
-          <h2>What drives the predictions?</h2>
+          <h2>
+            What drives the predictions?
+            <InfoTip tip="Feature importance: how much each column improved the model's decisions during training, scaled so all columns sum to 100%. A dominant single column can be a red flag — it may already contain the answer." />
+          </h2>
           <p className="muted small">
             The share of the model’s decisions each column is responsible for.
           </p>
@@ -40,6 +47,7 @@ export function ResultsDashboard({ meta }: { meta: ModelMeta }) {
           )}
         </div>
         <SensitivityCard meta={meta} inputs={debouncedValues} />
+        <FeatureIdeasCard meta={meta} />
       </div>
       <WhatIfPanel
         model={meta}

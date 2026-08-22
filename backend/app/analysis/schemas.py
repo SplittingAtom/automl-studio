@@ -42,3 +42,17 @@ class DatasetAnalysis(Frozen):
     summary: str
     points: tuple[AnalysisPoint, ...]
     candidates: tuple[TargetCandidate, ...]
+
+
+class FeatureIdea(Frozen):
+    """A candidate calculated column the probe model found useful."""
+
+    name: str
+    formula: str
+    share: float  # importance share in the probe fit (0..1)
+    based_on: tuple[str, str]
+
+
+class FeatureIdeasResponse(Frozen):
+    ideas: tuple[FeatureIdea, ...]
+    checked: int  # how many candidates were evaluated
