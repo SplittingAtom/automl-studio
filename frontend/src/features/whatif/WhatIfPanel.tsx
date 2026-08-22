@@ -1,5 +1,6 @@
 import type { ModelMeta, PredictResponse, WhatIfValues } from '../../api/schemas'
 import { ErrorBanner } from '../../components/ErrorBanner'
+import { InfoTip } from '../../components/InfoTip'
 import { CategorySelect } from './CategorySelect'
 import { ExplanationBars } from './ExplanationBars'
 import { NumericSlider } from './NumericSlider'
@@ -28,7 +29,10 @@ export function WhatIfPanel({
 
   return (
     <div className="card">
-      <h2>Explore what-if scenarios</h2>
+      <h2>
+        Explore what-if scenarios
+        <InfoTip tip="Ask the model hypothetical questions: set any combination of inputs and it predicts live. The bars underneath show which of your values pushed the prediction up or down." />
+      </h2>
       <p className="muted small">
         Adjust the inputs and watch the prediction update in real time.
       </p>

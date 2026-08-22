@@ -4,6 +4,7 @@ import { formatNumber, formatPercent } from '../../lib/formatters'
 interface MetricCard {
   value: string
   label: string
+  tip: string
 }
 
 function asNumber(value: unknown): number | null {
@@ -16,13 +17,25 @@ function classificationCards(metrics: Record<string, unknown>): MetricCard[] {
   const auc = asNumber(metrics.roc_auc)
   const cards: MetricCard[] = []
   if (accuracy !== null) {
-    cards.push({ value: formatPercent(accuracy), label: 'of test predictions were correct' })
+    cards.push({
+      value: formatPercent(accuracy),
+      label: 'of test predictions were correct',
+      tip: 'Accuracy: the share of held-out test rows the model classified correctly. Compare it with the "always guess the most common value" number below — that gap is the model\'s real contribution.',
+    })
   }
   if (f1 !== null) {
-    cards.push({ value: formatPercent(f1), label: 'balanced score across categories (F1)' })
+    cards.push({
+      value: formatPercent(f1),
+      label: 'balanced score across categories (F1)',
+      tip: 'F1 (weighted): balances catching each category against false alarms, so a model can\'t look good by only ever predicting the common category. Most useful when one category is rare.',
+    })
   }
   if (auc !== null) {
-    cards.push({ value: formatPercent(auc), label: 'ability to tell the categories apart (AUC)' })
+    cards.push({
+      value: formatPercent(auc),
+      label: 'ability to tell the categories apart (AUC)',
+      tip: 'ROC AUC: how well the model ranks cases — 50% is a coin flip, 100% is perfect separation. Unlike accuracy, it doesn\'t depend on the decision cut-off.',
+    })
   }
   return cards
 }
@@ -36,6 +49,7 @@ function regressionCards(metrics: Record<string, unknown>): MetricCard[] {
     cards.push({
       value: formatPercent(Math.max(0, r2)),
       label: 'of the variation is explained by the model (R²)',
+      tip: 'R²: how much of the target\'s ups and downs the model accounts for. 100% is perfect; 0% means no better than always predicting the average.',
     })
   }
   if (mae !== null) {
@@ -45,6 +59,7 @@ function regressionCards(metrics: Record<string, unknown>): MetricCard[] {
         mean !== null
           ? `typical prediction error (average value is ${formatNumber(mean)})`
           : 'typical prediction error',
+      tip: 'MAE (mean absolute error): on average, how far predictions land from the true value, in the same units as the target. Judge it against the average value shown.',
     })
   }
   return cards
@@ -93,13 +108,16 @@ export function MetricsCards({ meta }: { meta: ModelMeta }) {
     <div>
       <div className="metric-cards">
         {cards.map((card) => (
-          <div key={card.label} className="card metric-card">
+          <div key={card.label} className="card metric-card" title={card.tip}>
             <div className="value">{card.value}</div>
             <div className="label">{card.label}</div>
           </div>
         ))}
         {testRows !== null && (
-          <div className="card metric-card">
+          <div
+            className="card metric-card"
+            title="These rows were split off before training and never shown to the model — scoring on them estimates how it will do on genuinely new data."
+          >
             <div className="value">{testRows.toLocaleString()}</div>
             <div className="label">rows held back to test the model fairly</div>
           </div>

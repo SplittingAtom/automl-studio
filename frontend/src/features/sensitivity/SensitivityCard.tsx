@@ -15,6 +15,7 @@ import {
 import { useSensitivity } from '../../api/hooks'
 import type { ModelMeta, SensitivityResponse, WhatIfValues } from '../../api/schemas'
 import { ErrorBanner } from '../../components/ErrorBanner'
+import { InfoTip } from '../../components/InfoTip'
 import { formatNumber } from '../../lib/formatters'
 
 const LINE_COLOR = '#4f46e5'
@@ -55,6 +56,7 @@ export function SensitivityCard({
             ))}
           </select>{' '}
           affect the prediction?
+          <InfoTip tip="Sweeps this one column across its full range while every other input stays at your current what-if values. The curve shows this scenario's sensitivity — change the other inputs and the curve can change too." />
         </h2>
       </div>
       <p className="muted small">
