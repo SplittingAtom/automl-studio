@@ -11,6 +11,7 @@ from app.api.envelope import AppError, ok
 from app.config import Settings
 from app.datasets.calculated import add_calculated_column
 from app.datasets.csv_loading import parse_upload
+from app.datasets.exploration import CURRENT_EXPLORATION_VERSION, explore_dataframe
 from app.datasets.repository import DatasetRepository
 from app.datasets.schemas import CalculatedColumnRequest, DatasetMeta, DatasetPreview
 
@@ -87,6 +88,20 @@ def analyze(dataset_id: str, repo: RepoDep) -> dict:
     analysis = analyze_dataset(dataset_id, repo.load_dataframe(dataset_id), meta.columns)
     repo.save_analysis(dataset_id, analysis)
     return ok(analysis.model_dump())
+
+
+@router.get("/{dataset_id}/exploration")
+def explore(dataset_id: str, repo: RepoDep) -> dict:
+    """Per-column distributions for the profiling view; cached like analysis."""
+    meta = _require(repo, dataset_id)
+    cached = repo.get_exploration(dataset_id)
+    if cached is not None and cached.version >= CURRENT_EXPLORATION_VERSION:
+        return ok(cached.model_dump())
+    exploration = explore_dataframe(
+        dataset_id, repo.load_dataframe(dataset_id), meta.columns
+    )
+    repo.save_exploration(dataset_id, exploration)
+    return ok(exploration.model_dump())
 
 
 def _require(repo: DatasetRepository, dataset_id: str) -> DatasetMeta:

@@ -55,6 +55,50 @@ export const DatasetPreviewSchema = z.object({
   rows: z.array(z.record(z.string(), z.unknown())),
 })
 
+export const DistributionBinSchema = z.object({
+  label: z.string(),
+  count: z.number(),
+  low: z.number().nullable(),
+  high: z.number().nullable(),
+})
+
+export const ColumnExplorationSchema = z.object({
+  name: z.string(),
+  kind: ColumnKindSchema,
+  missing_pct: z.number(),
+  unique_count: z.number(),
+  bins: z.array(DistributionBinSchema),
+  other_count: z.number(),
+  stats: z
+    .object({
+      min: z.number(),
+      max: z.number(),
+      mean: z.number(),
+      median: z.number(),
+      std: z.number(),
+      outlier_count: z.number(),
+    })
+    .nullable(),
+  note: z.string().nullable(),
+})
+
+export const ExplorationHighlightSchema = z.object({
+  tone: z.enum(['info', 'warn']),
+  message: z.string(),
+  column: z.string().nullable(),
+})
+
+export const DatasetExplorationSchema = z.object({
+  dataset_id: z.string(),
+  row_count: z.number(),
+  column_count: z.number(),
+  missing_cells_pct: z.number(),
+  duplicate_rows: z.number(),
+  columns: z.array(ColumnExplorationSchema),
+  highlights: z.array(ExplorationHighlightSchema),
+  version: z.number(),
+})
+
 export const TaskSchema = z.enum(['classification', 'regression'])
 export const ModelStatusSchema = z.enum(['queued', 'training', 'complete', 'failed'])
 
@@ -66,6 +110,31 @@ export const InputSpecItemSchema = z.object({
   options: z.array(z.string()).nullable(),
   default: z.union([z.number(), z.string()]).nullable(),
 })
+
+export const TuningOverridesSchema = z.object({
+  max_depth: z.number().nullable(),
+  learning_rate: z.number().nullable(),
+  n_estimators: z.number().nullable(),
+  subsample: z.number().nullable(),
+  colsample_bytree: z.number().nullable(),
+  min_child_weight: z.number().nullable(),
+  reg_alpha: z.number().nullable(),
+  reg_lambda: z.number().nullable(),
+  monotone_constraints: z.record(z.string(), z.number()),
+})
+
+/** Request-side shape: only send the knobs the user actually set. */
+export type TuningOverridesInput = {
+  max_depth?: number
+  learning_rate?: number
+  n_estimators?: number
+  subsample?: number
+  colsample_bytree?: number
+  min_child_weight?: number
+  reg_alpha?: number
+  reg_lambda?: number
+  monotone_constraints?: Record<string, 1 | -1>
+}
 
 export const ModelMetaSchema = z.object({
   id: z.string(),
@@ -88,6 +157,9 @@ export const ModelMetaSchema = z.object({
   leak_suspect: z.string().nullable(),
   warnings: z.array(WarningSchema),
   n_rows_used: z.number().nullable(),
+  overrides: TuningOverridesSchema.nullable(),
+  baseline_model_id: z.string().nullable(),
+  label: z.string().nullable(),
 })
 
 export const ExplanationSchema = z.object({
@@ -142,6 +214,85 @@ export const SensitivityResponseSchema = z.object({
   ),
 })
 
+export const CorrelationCellSchema = z.object({
+  value: z.number().nullable(),
+  signed: z.boolean(),
+})
+
+export const FeatureImpactSchema = z.object({
+  feature: z.string(),
+  kind: z.enum(['numeric', 'categorical']),
+  mean_abs_contribution: z.number(),
+  points: z.array(
+    z.object({
+      contribution: z.number(),
+      value_norm: z.number().nullable(),
+      value_label: z.string(),
+    }),
+  ),
+})
+
+export const InsightsResponseSchema = z.object({
+  columns: z.array(z.string()),
+  prediction_label: z.string(),
+  matrix: z.array(z.array(CorrelationCellSchema)),
+  impacts: z.array(FeatureImpactSchema),
+  axis_low_label: z.string(),
+  axis_high_label: z.string(),
+  sample_size: z.number(),
+  association_rows: z.number(),
+})
+
+export type BlueprintNode = {
+  samples: number
+  question: string | null
+  label: string | null
+  yes: BlueprintNode | null
+  no: BlueprintNode | null
+}
+
+export const BlueprintNodeSchema: z.ZodType<BlueprintNode> = z.lazy(() =>
+  z.object({
+    samples: z.number(),
+    question: z.string().nullable(),
+    label: z.string().nullable(),
+    yes: BlueprintNodeSchema.nullable(),
+    no: BlueprintNodeSchema.nullable(),
+  }),
+)
+
+export const BlueprintResponseSchema = z.object({
+  root: BlueprintNodeSchema,
+  fidelity: z.number(),
+  output_label: z.string(),
+  sample_size: z.number(),
+})
+
+export const GroupCheckResponseSchema = z.object({
+  flagged: z.array(
+    z.object({
+      column: z.string(),
+      value: z.string(),
+      rows: z.number(),
+      gap_label: z.string(),
+    }),
+  ),
+  groups_checked: z.number(),
+  overall_label: z.string(),
+})
+
+export const FeatureIdeaSchema = z.object({
+  name: z.string(),
+  formula: z.string(),
+  share: z.number(),
+  based_on: z.tuple([z.string(), z.string()]),
+})
+
+export const FeatureIdeasResponseSchema = z.object({
+  ideas: z.array(FeatureIdeaSchema),
+  checked: z.number(),
+})
+
 export const TargetCandidateSchema = z.object({
   column: z.string(),
   task: z.enum(['classification', 'regression']),
@@ -182,5 +333,16 @@ export type SensitivityResponse = z.infer<typeof SensitivityResponseSchema>
 export type ValidationRows = z.infer<typeof ValidationRowsSchema>
 export type ForecastResponse = z.infer<typeof ForecastResponseSchema>
 export type ThresholdPoint = z.infer<typeof ThresholdPointSchema>
+export type CorrelationCell = z.infer<typeof CorrelationCellSchema>
+export type DistributionBin = z.infer<typeof DistributionBinSchema>
+export type ColumnExploration = z.infer<typeof ColumnExplorationSchema>
+export type DatasetExploration = z.infer<typeof DatasetExplorationSchema>
+export type FeatureImpact = z.infer<typeof FeatureImpactSchema>
+export type InsightsResponse = z.infer<typeof InsightsResponseSchema>
+export type TuningOverrides = z.infer<typeof TuningOverridesSchema>
+export type FeatureIdea = z.infer<typeof FeatureIdeaSchema>
+export type BlueprintResponse = z.infer<typeof BlueprintResponseSchema>
+export type GroupCheckResponse = z.infer<typeof GroupCheckResponseSchema>
+export type FeatureIdeasResponse = z.infer<typeof FeatureIdeasResponseSchema>
 export type Effort = 'standard' | 'thorough'
 export type WhatIfValues = Record<string, number | string>

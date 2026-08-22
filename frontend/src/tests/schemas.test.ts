@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DatasetAnalysisSchema,
+  DatasetExplorationSchema,
+  InsightsResponseSchema,
   PredictResponseSchema,
   SensitivityResponseSchema,
 } from '../api/schemas'
@@ -68,6 +70,124 @@ describe('DatasetAnalysisSchema', () => {
     })
     expect(parsed.candidates[0].recommended).toBe(true)
     expect(parsed.rating).toBe('good')
+  })
+})
+
+describe('DatasetExplorationSchema', () => {
+  it('parses numeric, categorical, and excluded columns', () => {
+    const parsed = DatasetExplorationSchema.parse({
+      dataset_id: 'ds_1',
+      row_count: 891,
+      column_count: 3,
+      missing_cells_pct: 8.1,
+      duplicate_rows: 0,
+      highlights: [
+        { tone: 'info', message: '"fare" is stretched by a few large values.', column: 'fare' },
+      ],
+      version: 2,
+      columns: [
+        {
+          name: 'age',
+          kind: 'numeric',
+          missing_pct: 19.9,
+          unique_count: 88,
+          bins: [{ label: '0.42–8.4', count: 54, low: 0.42, high: 8.4 }],
+          other_count: 0,
+          stats: { min: 0.42, max: 80, mean: 29.7, median: 28, std: 14.5, outlier_count: 11 },
+          note: null,
+        },
+        {
+          name: 'sex',
+          kind: 'categorical',
+          missing_pct: 0,
+          unique_count: 2,
+          bins: [
+            { label: 'male', count: 577, low: null, high: null },
+            { label: 'female', count: 314, low: null, high: null },
+          ],
+          other_count: 0,
+          stats: null,
+          note: null,
+        },
+        {
+          name: 'ticket_id',
+          kind: 'id_like',
+          missing_pct: 0,
+          unique_count: 891,
+          bins: [],
+          other_count: 0,
+          stats: null,
+          note: 'Looks like an ID — models leave it out.',
+        },
+      ],
+    })
+    expect(parsed.columns).toHaveLength(3)
+    expect(parsed.columns[0].stats?.outlier_count).toBe(11)
+    expect(parsed.columns[2].bins).toHaveLength(0)
+  })
+})
+
+describe('InsightsResponseSchema', () => {
+  it('parses a full insights payload', () => {
+    const parsed = InsightsResponseSchema.parse({
+      columns: ['age', 'sex'],
+      prediction_label: 'Chance of "1"',
+      matrix: [
+        [
+          { value: 1.0, signed: true },
+          { value: 0.19, signed: false },
+          { value: -0.08, signed: true },
+        ],
+        [
+          { value: 0.19, signed: false },
+          { value: 1.0, signed: false },
+          { value: 0.54, signed: false },
+        ],
+        [
+          { value: -0.08, signed: true },
+          { value: 0.54, signed: false },
+          { value: null, signed: false },
+        ],
+      ],
+      impacts: [
+        {
+          feature: 'sex',
+          kind: 'categorical',
+          mean_abs_contribution: 1.2,
+          points: [
+            { contribution: -1.4, value_norm: null, value_label: 'male' },
+            { contribution: 1.1, value_norm: null, value_label: 'female' },
+          ],
+        },
+        {
+          feature: 'age',
+          kind: 'numeric',
+          mean_abs_contribution: 0.4,
+          points: [{ contribution: 0.3, value_norm: 0.07, value_label: '6' }],
+        },
+      ],
+      axis_low_label: 'toward "0"',
+      axis_high_label: 'toward "1"',
+      sample_size: 179,
+      association_rows: 179,
+    })
+    expect(parsed.matrix).toHaveLength(3)
+    expect(parsed.impacts[0].points[0].value_norm).toBeNull()
+  })
+
+  it('rejects a malformed matrix', () => {
+    expect(() =>
+      InsightsResponseSchema.parse({
+        columns: ['a'],
+        prediction_label: 'p',
+        matrix: [[0.5]],
+        impacts: [],
+        axis_low_label: 'x',
+        axis_high_label: 'y',
+        sample_size: 1,
+        association_rows: 1,
+      }),
+    ).toThrow()
   })
 })
 

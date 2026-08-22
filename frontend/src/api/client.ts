@@ -2,9 +2,17 @@ import type { z } from 'zod'
 
 import {
   DatasetAnalysisSchema,
+  type DatasetExploration,
+  DatasetExplorationSchema,
   DatasetMetaSchema,
   DatasetPreviewSchema,
   EnvelopeSchema,
+  type GroupCheckResponse,
+  GroupCheckResponseSchema,
+  type BlueprintResponse,
+  BlueprintResponseSchema,
+  type FeatureIdeasResponse,
+  FeatureIdeasResponseSchema,
   ModelMetaSchema,
   PredictResponseSchema,
   SensitivityResponseSchema,
@@ -16,8 +24,11 @@ import {
   type Effort,
   type ForecastResponse,
   ForecastResponseSchema,
+  type InsightsResponse,
+  InsightsResponseSchema,
   type SensitivityResponse,
   type Task,
+  type TuningOverridesInput,
   type ValidationRows,
   type WhatIfValues,
   ValidationRowsSchema,
@@ -83,6 +94,9 @@ export const api = {
   analyzeDataset: (id: string): Promise<DatasetAnalysis> =>
     request(DatasetAnalysisSchema, `/api/datasets/${id}/analysis`),
 
+  exploreDataset: (id: string): Promise<DatasetExploration> =>
+    request(DatasetExplorationSchema, `/api/datasets/${id}/exploration`),
+
   createCalculatedColumn: (
     datasetId: string,
     input: { name: string; formula: string },
@@ -107,6 +121,9 @@ export const api = {
     effort?: Effort
     time_column?: string | null
     horizon?: number
+    overrides?: TuningOverridesInput
+    baseline_model_id?: string
+    label?: string
   }): Promise<ModelMeta> =>
     request(ModelMetaSchema, '/api/models', {
       method: 'POST',
@@ -122,6 +139,18 @@ export const api = {
 
   getValidationRows: (modelId: string, rows = 15): Promise<ValidationRows> =>
     request(ValidationRowsSchema, `/api/models/${modelId}/validation?rows=${rows}`),
+
+  getGroupCheck: (modelId: string): Promise<GroupCheckResponse> =>
+    request(GroupCheckResponseSchema, `/api/models/${modelId}/group-check`),
+
+  getBlueprint: (modelId: string): Promise<BlueprintResponse> =>
+    request(BlueprintResponseSchema, `/api/models/${modelId}/blueprint`),
+
+  getFeatureIdeas: (modelId: string): Promise<FeatureIdeasResponse> =>
+    request(FeatureIdeasResponseSchema, `/api/models/${modelId}/feature-ideas`),
+
+  getInsights: (modelId: string): Promise<InsightsResponse> =>
+    request(InsightsResponseSchema, `/api/models/${modelId}/insights`),
 
   getForecast: (modelId: string, steps: number): Promise<ForecastResponse> =>
     request(ForecastResponseSchema, `/api/models/${modelId}/forecast?steps=${steps}`),

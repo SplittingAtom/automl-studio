@@ -9,11 +9,12 @@ import pandas as pd
 
 from app.analysis.schemas import DatasetAnalysis
 from app.datasets.profiling import profile_dataframe
-from app.datasets.schemas import DatasetMeta
+from app.datasets.schemas import DatasetExploration, DatasetMeta
 
 META_FILE = "meta.json"
 DATA_FILE = "data.csv"
 ANALYSIS_FILE = "analysis.json"
+EXPLORATION_FILE = "exploration.json"
 
 
 class DatasetRepository:
@@ -75,4 +76,15 @@ class DatasetRepository:
     def save_analysis(self, dataset_id: str, analysis: "DatasetAnalysis") -> None:
         (self._root / dataset_id / ANALYSIS_FILE).write_text(
             analysis.model_dump_json(indent=2)
+        )
+
+    def get_exploration(self, dataset_id: str) -> DatasetExploration | None:
+        path = self._root / dataset_id / EXPLORATION_FILE
+        if not path.is_file():
+            return None
+        return DatasetExploration.model_validate(json.loads(path.read_text()))
+
+    def save_exploration(self, dataset_id: str, exploration: DatasetExploration) -> None:
+        (self._root / dataset_id / EXPLORATION_FILE).write_text(
+            exploration.model_dump_json(indent=2)
         )
